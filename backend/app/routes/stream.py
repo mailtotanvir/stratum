@@ -6,14 +6,15 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.services.event_service import RuntimeEvent, emit_event, event_service
+from app.models.runtime_event import EventType, RuntimeEvent, Severity
+from app.services.event_service import emit_event, event_service
 
 router = APIRouter()
 
 
 class DemoEventRequest(BaseModel):
-    type: str = "demo_event"
-    severity: str = "info"
+    type: EventType = EventType.TASK_STARTED
+    severity: Severity = Severity.INFO
     message: str = "Demo runtime event"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -56,4 +57,3 @@ async def demo_event(request: DemoEventRequest | None = None) -> dict[str, Any]:
         metadata=event_request.metadata,
     )
     return event.to_dict()
-

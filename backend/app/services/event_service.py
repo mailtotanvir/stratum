@@ -1,28 +1,9 @@
 import asyncio
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, AsyncIterator
 
-
-@dataclass(frozen=True)
-class RuntimeEvent:
-    id: int
-    ts: str
-    type: str
-    severity: str
-    message: str
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "ts": self.ts,
-            "type": self.type,
-            "severity": self.severity,
-            "message": self.message,
-            "metadata": self.metadata,
-        }
+from app.models.runtime_event import EventType, RuntimeEvent, Severity
 
 
 class EventService:
@@ -38,9 +19,9 @@ class EventService:
 
     async def emit_event(
         self,
-        event_type: str,
+        event_type: EventType | str,
         message: str,
-        severity: str = "info",
+        severity: Severity | str = Severity.INFO,
         metadata: dict[str, Any] | None = None,
     ) -> RuntimeEvent:
         async with self._lock:
@@ -83,9 +64,9 @@ event_service = EventService()
 
 
 async def emit_event(
-    event_type: str,
+    event_type: EventType | str,
     message: str,
-    severity: str = "info",
+    severity: Severity | str = Severity.INFO,
     metadata: dict[str, Any] | None = None,
 ) -> RuntimeEvent:
     return await event_service.emit_event(
@@ -94,4 +75,3 @@ async def emit_event(
         message=message,
         metadata=metadata,
     )
-

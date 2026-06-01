@@ -1,9 +1,10 @@
 import asyncio
 
 from app.main import app, health
+from app.models.runtime_event import EventType, RuntimeEvent, Severity
 from app.routes.hitl import HumanResponse, demo_ask, demo_result, pending, respond
 from app.routes.stream import demo_event, format_sse
-from app.services.event_service import EventService, RuntimeEvent, event_service
+from app.services.event_service import EventService, event_service
 
 
 async def next_event(queue: asyncio.Queue[RuntimeEvent]) -> RuntimeEvent:
@@ -77,7 +78,7 @@ def test_event_service_subscriber_receives_events() -> None:
 
         async with service.subscribe(replay_existing=True) as queue:
             event = await service.emit_event(
-                event_type="test_event",
+                event_type=EventType.TASK_STARTED,
                 severity="info",
                 message="Test event",
                 metadata={"source": "pytest"},
@@ -87,8 +88,8 @@ def test_event_service_subscriber_receives_events() -> None:
 
         assert received == event
         assert event.id == 1
-        assert event.type == "test_event"
-        assert event.severity == "info"
+        assert event.type == EventType.TASK_STARTED
+        assert event.severity == Severity.INFO
         assert event.message == "Test event"
         assert event.metadata == {"source": "pytest"}
 
@@ -100,8 +101,8 @@ def test_stream_routes_and_sse_format() -> None:
     event = RuntimeEvent(
         id=7,
         ts="2026-06-01T00:00:00+00:00",
-        type="demo_event",
-        severity="info",
+        type=EventType.TASK_STARTED,
+        severity=Severity.INFO,
         message="Demo runtime event",
         metadata={"ok": True},
     )
@@ -109,8 +110,8 @@ def test_stream_routes_and_sse_format() -> None:
     assert "/stream" in paths
     assert "/demo/event" in paths
     assert format_sse(event) == (
-        'id: 7\nevent: demo_event\ndata: {"id":7,'
-        '"ts":"2026-06-01T00:00:00+00:00","type":"demo_event",'
+        'id: 7\nevent: task_started\ndata: {"id":7,'
+        '"ts":"2026-06-01T00:00:00+00:00","type":"task_started",'
         '"severity":"info","message":"Demo runtime event",'
         '"metadata":{"ok":true}}\n\n'
     )
@@ -120,7 +121,7 @@ def test_demo_event_route_emits_event() -> None:
     async def run_flow() -> None:
         response = await demo_event()
 
-        assert response["type"] == "demo_event"
+        assert response["type"] == "task_started"
         assert response["severity"] == "info"
         assert response["message"] == "Demo runtime event"
         assert response["metadata"] == {}
