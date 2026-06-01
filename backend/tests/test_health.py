@@ -1,8 +1,7 @@
 import asyncio
 
 from app.main import app, health
-from app.main import demo_ask, demo_result, pending, respond
-from app.main import HumanResponse
+from app.routes.hitl import HumanResponse, demo_ask, demo_result, pending, respond
 
 
 def test_health() -> None:
