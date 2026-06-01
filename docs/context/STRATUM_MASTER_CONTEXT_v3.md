@@ -181,6 +181,126 @@ subscribe(event_type)
 
 ---
 
+# Runtime Event Store And Memory Architecture
+
+The Runtime Event Store is the authoritative source of truth for Stratum.
+
+Every meaningful runtime transition should be recorded as an append-only event before it is interpreted by higher-level systems.
+
+Authoritative state:
+- runtime events
+- timestamps
+- task lifecycle transitions
+- human approvals and responses
+- tool calls and results
+- warnings and errors
+- artifact creation records
+
+Derived state:
+- projections
+- summaries
+- histories
+- artifact relationships
+- working memory
+- graph memory
+- hypergraph memory
+
+Graph and hypergraph memory are derived state, not source of truth.
+
+They must be rebuildable from the event store and artifacts. They should never become the only place where critical runtime facts exist.
+
+The intended flow is:
+
+```text
+Runtime Event Store
+   │
+   ▼
+Projections
+   │
+   ▼
+Memory Systems
+```
+
+This keeps the runtime deterministic and inspectable while allowing richer memory systems to evolve later.
+
+## Event Store Role
+
+The Event Store owns:
+- append-only traces
+- ordering
+- replayability
+- auditability
+- recovery substrate
+
+The Event Store does NOT own:
+- semantic interpretation
+- graph inference
+- task planning
+- agent reasoning
+- long-term memory policy
+
+## Projection Role
+
+Projections transform raw events into queryable views.
+
+Examples:
+- current task status
+- pending human question
+- command history
+- warning/error summaries
+- artifact index
+- proposal lifecycle state
+
+Projections are disposable and rebuildable.
+
+If a projection becomes corrupt or outdated, it should be regenerated from the Runtime Event Store.
+
+## Memory Systems Role
+
+Memory systems consume projected state and artifacts.
+
+They may include:
+- repo summaries
+- task summaries
+- artifact graphs
+- working memory graphs
+- semantic indexes
+- hypergraph memory
+
+These systems are later roadmap capabilities. They are not part of the authoritative runtime core.
+
+## Version Roadmap
+
+MVP:
+- SQLite Runtime Event Store
+- append-only event traces
+- SSE event streaming
+- persisted event history
+
+MVP+:
+- trace replay
+- basic task/history reconstruction from stored events
+
+V2:
+- projection engine
+- rebuildable query views
+- explicit projection invalidation/rebuild workflow
+
+V3:
+- artifact graph
+- relationships between events, files, patches, commands, approvals, and generated artifacts
+
+Later roadmap:
+- working memory graph
+- hypergraph memory
+- semantic memory adapters
+- cross-task memory views
+
+Final rule:
+hypergraph memory is future derived/rebuildable state. It must never replace the Runtime Event Store as the source of truth.
+
+---
+
 # Tool Registry Evolution
 
 Future-ready architecture:
