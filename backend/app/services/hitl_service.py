@@ -1,6 +1,8 @@
 import asyncio
 from typing import Any
 
+from app.services.event_service import emit_event
+
 
 class PendingQuestionError(RuntimeError):
     pass
@@ -34,6 +36,12 @@ class HitlService:
             self._pending_question = question
             self._waiter = waiter
 
+        await emit_event(
+            event_type="ask_human_requested",
+            severity="info",
+            message=question,
+            metadata={"question": question},
+        )
         return await waiter
 
     async def respond(self, text: str) -> None:
@@ -47,6 +55,13 @@ class HitlService:
 
         if not waiter.done():
             waiter.set_result(text)
+
+        await emit_event(
+            event_type="ask_human_responded",
+            severity="info",
+            message="Human response submitted.",
+            metadata={"response": text},
+        )
 
     async def start_demo(self) -> str:
         async with self._lock:
@@ -71,7 +86,12 @@ class HitlService:
     async def _run_demo(self) -> None:
         answer = await self.ask_human("What colour is the sky?")
         self.result = f"You answered: {answer}"
+        await emit_event(
+            event_type="demo_task_completed",
+            severity="info",
+            message="Demo task completed.",
+            metadata={"answer": answer, "result": self.result},
+        )
 
 
 hitl_service = HitlService()
-

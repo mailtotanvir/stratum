@@ -3,7 +3,7 @@ import asyncio
 from app.main import app, health
 from app.routes.hitl import HumanResponse, demo_ask, demo_result, pending, respond
 from app.routes.stream import demo_event, format_sse
-from app.services.event_service import EventService, RuntimeEvent
+from app.services.event_service import EventService, RuntimeEvent, event_service
 
 
 def test_health() -> None:
@@ -15,21 +15,37 @@ def test_health() -> None:
 
 def test_hitl_demo_flow() -> None:
     async def run_flow() -> None:
-        start_response = await demo_ask()
+        async with event_service.subscribe(replay_existing=False) as queue:
+            start_response = await demo_ask()
 
-        assert start_response == {"status": "started"}
-        assert await pending() == {"question": "What colour is the sky?"}
+            assert start_response == {"status": "started"}
+            assert await pending() == {"question": "What colour is the sky?"}
 
-        response = await respond(HumanResponse(text="blue"))
-        await asyncio.sleep(0)
+            requested = await asyncio.wait_for(queue.get(), timeout=1)
 
-        assert response == {"status": "ok"}
-        assert await pending() is None
+            assert requested.type == "ask_human_requested"
+            assert requested.message == "What colour is the sky?"
+            assert requested.metadata == {"question": "What colour is the sky?"}
 
-        result = await demo_result()
-        assert result["pending"] is None
-        assert result["running"] is False
-        assert result["result"] == "You answered: blue"
+            response = await respond(HumanResponse(text="blue"))
+            responded = await asyncio.wait_for(queue.get(), timeout=1)
+            completed = await asyncio.wait_for(queue.get(), timeout=1)
+            await asyncio.sleep(0)
+
+            assert response == {"status": "ok"}
+            assert responded.type == "ask_human_responded"
+            assert responded.metadata == {"response": "blue"}
+            assert completed.type == "demo_task_completed"
+            assert completed.metadata == {
+                "answer": "blue",
+                "result": "You answered: blue",
+            }
+            assert await pending() is None
+
+            result = await demo_result()
+            assert result["pending"] is None
+            assert result["running"] is False
+            assert result["result"] == "You answered: blue"
 
     asyncio.run(run_flow())
 
