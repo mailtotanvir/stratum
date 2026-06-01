@@ -57,3 +57,8 @@ async def demo_event(request: DemoEventRequest | None = None) -> dict[str, Any]:
         metadata=event_request.metadata,
     )
     return event.to_dict()
+
+
+@router.get("/trace")
+def trace() -> list[dict[str, Any]]:
+    return [event.to_dict() for event in event_service.list_persisted_events()]

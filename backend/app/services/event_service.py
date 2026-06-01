@@ -4,18 +4,26 @@ from datetime import UTC, datetime
 from typing import Any, AsyncIterator
 
 from app.models.runtime_event import EventType, RuntimeEvent, Severity
+from app.services.trace_service import TraceService, trace_service
 
 
 class EventService:
-    def __init__(self) -> None:
+    def __init__(self, trace_store: TraceService | None = None) -> None:
         self._lock = asyncio.Lock()
         self._events: list[RuntimeEvent] = []
         self._subscribers: set[asyncio.Queue[RuntimeEvent]] = set()
         self._next_id = 1
+        self._trace_store = trace_store or trace_service
+
+    def set_trace_store(self, trace_store: TraceService) -> None:
+        self._trace_store = trace_store
 
     async def list_events(self) -> list[RuntimeEvent]:
         async with self._lock:
             return list(self._events)
+
+    def list_persisted_events(self) -> list[RuntimeEvent]:
+        return self._trace_store.list_events()
 
     async def emit_event(
         self,
@@ -34,6 +42,7 @@ class EventService:
                 metadata=metadata or {},
             )
             self._next_id += 1
+            self._trace_store.append_event(event)
             self._events.append(event)
 
             for subscriber in self._subscribers:

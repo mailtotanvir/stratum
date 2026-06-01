@@ -1,10 +1,18 @@
 import asyncio
 
+import pytest
+
 from app.main import app, health
 from app.models.runtime_event import EventType, RuntimeEvent, Severity
 from app.routes.hitl import HumanResponse, demo_ask, demo_result, pending, respond
-from app.routes.stream import demo_event, format_sse
+from app.routes.stream import demo_event, format_sse, trace
 from app.services.event_service import EventService, event_service
+from app.services.trace_service import TraceService
+
+
+@pytest.fixture(autouse=True)
+def use_temp_trace_store(tmp_path):
+    event_service.set_trace_store(TraceService(tmp_path / "stratum.db"))
 
 
 async def next_event(queue: asyncio.Queue[RuntimeEvent]) -> RuntimeEvent:
@@ -72,9 +80,9 @@ def test_hitl_routes_emit_ordered_events_with_metadata() -> None:
     asyncio.run(run_flow())
 
 
-def test_event_service_subscriber_receives_events() -> None:
+def test_event_service_subscriber_receives_events(tmp_path) -> None:
     async def run_flow() -> None:
-        service = EventService()
+        service = EventService(TraceService(tmp_path / "events.db"))
 
         async with service.subscribe(replay_existing=True) as queue:
             event = await service.emit_event(
@@ -92,6 +100,34 @@ def test_event_service_subscriber_receives_events() -> None:
         assert event.severity == Severity.INFO
         assert event.message == "Test event"
         assert event.metadata == {"source": "pytest"}
+
+    asyncio.run(run_flow())
+
+
+def test_emitted_events_are_persisted_in_order(tmp_path) -> None:
+    async def run_flow() -> None:
+        store = TraceService(tmp_path / "events.db")
+        service = EventService(store)
+
+        first = await service.emit_event(
+            event_type=EventType.TASK_STARTED,
+            severity=Severity.INFO,
+            message="Started",
+            metadata={"step": 1},
+        )
+        second = await service.emit_event(
+            event_type=EventType.TASK_COMPLETED,
+            severity=Severity.INFO,
+            message="Completed",
+            metadata={"step": 2},
+        )
+
+        persisted = store.list_events()
+
+        assert persisted == [first, second]
+        assert [event.id for event in persisted] == [1, 2]
+        assert [event.message for event in persisted] == ["Started", "Completed"]
+        assert [event.metadata for event in persisted] == [{"step": 1}, {"step": 2}]
 
     asyncio.run(run_flow())
 
@@ -125,5 +161,17 @@ def test_demo_event_route_emits_event() -> None:
         assert response["severity"] == "info"
         assert response["message"] == "Demo runtime event"
         assert response["metadata"] == {}
+
+    asyncio.run(run_flow())
+
+
+def test_trace_route_returns_persisted_events_in_order() -> None:
+    async def run_flow() -> None:
+        first = await demo_event()
+        second = await demo_event()
+
+        persisted = trace()
+
+        assert persisted[-2:] == [first, second]
 
     asyncio.run(run_flow())
