@@ -4,9 +4,12 @@ import pytest
 
 from app.main import app, health
 from app.models.runtime_event import EventType, RuntimeEvent, Severity
+from app.models.task import TaskCreate, TaskStatus
 from app.routes.hitl import HumanResponse, demo_ask, demo_result, pending, respond
 from app.routes.stream import demo_event, format_sse, trace
+from app.routes import task as task_routes
 from app.services.event_service import EventService, event_service
+from app.services.task_service import TaskNotFoundError, TaskService
 from app.services.trace_service import TraceService
 
 
@@ -175,3 +178,38 @@ def test_trace_route_returns_persisted_events_in_order() -> None:
         assert persisted[-2:] == [first, second]
 
     asyncio.run(run_flow())
+
+
+def test_task_routes_create_get_and_list_newest_first(tmp_path) -> None:
+    task_routes.task_service = TaskService(tmp_path / "tasks.db")
+
+    first = task_routes.create_task(TaskCreate(description="First task"))
+    second = task_routes.create_task(TaskCreate(description="Second task"))
+
+    assert first.status == TaskStatus.PENDING
+    assert first.description == "First task"
+    assert task_routes.get_task(first.id) == first
+    assert task_routes.get_task(second.id) == second
+    assert task_routes.list_tasks() == [second, first]
+
+
+def test_task_service_persists_tasks_and_updates_status(tmp_path) -> None:
+    db_path = tmp_path / "tasks.db"
+    writer = TaskService(db_path)
+    created = writer.create_task("Persisted task")
+    updated = writer.update_status(created.id, TaskStatus.RUNNING)
+
+    reader = TaskService(db_path)
+
+    assert updated.id == created.id
+    assert updated.status == TaskStatus.RUNNING
+    assert updated.updated_at >= created.updated_at
+    assert reader.get_task(created.id) == updated
+    assert reader.list_tasks() == [updated]
+
+
+def test_task_service_missing_task_raises(tmp_path) -> None:
+    service = TaskService(tmp_path / "tasks.db")
+
+    with pytest.raises(TaskNotFoundError):
+        service.get_task("missing")

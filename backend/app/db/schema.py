@@ -17,3 +17,12 @@ class RuntimeEventRecord(Base):
     message: Mapped[str] = mapped_column(Text)
     metadata_json: Mapped[str] = mapped_column(Text)
 
+
+class TaskRecord(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[str] = mapped_column(Text, index=True)
+    updated_at: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    description: Mapped[str] = mapped_column(Text)
