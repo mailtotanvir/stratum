@@ -15,8 +15,13 @@ class EventType(StrEnum):
     ASK_HUMAN_REQUESTED = "ask_human_requested"
     ASK_HUMAN_RESPONDED = "ask_human_responded"
     DEMO_TASK_COMPLETED = "demo_task_completed"
+    TASK_CREATED = "task_created"
+    TASK_RUNNING = "task_running"
+    TASK_FAILED = "task_failed"
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
+    PROPOSAL_GENERATED = "proposal_generated"
+    PROPOSAL_RESOLVED = "proposal_resolved"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     WARNING = "warning"
@@ -33,4 +38,3 @@ class RuntimeEvent(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
-

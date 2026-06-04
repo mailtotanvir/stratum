@@ -37,13 +37,19 @@ class TraceService:
             session.add(record)
             session.commit()
 
-    def list_events(self) -> list[RuntimeEvent]:
+    def list_events(
+        self,
+        event_type: str | None = None,
+        task_id: str | None = None,
+        proposal_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[RuntimeEvent]:
         statement = select(RuntimeEventRecord).order_by(RuntimeEventRecord.row_id)
 
         with self.session_factory() as session:
             records = session.scalars(statement).all()
 
-        return [
+        events = [
             RuntimeEvent(
                 id=record.event_id,
                 ts=record.ts,
@@ -54,7 +60,24 @@ class TraceService:
             )
             for record in records
         ]
+        if event_type is not None:
+            events = [event for event in events if event.type.value == event_type]
+        if task_id is not None:
+            events = [
+                event
+                for event in events
+                if event.metadata.get("task_id") == task_id
+            ]
+        if proposal_id is not None:
+            events = [
+                event
+                for event in events
+                if event.metadata.get("proposal_id") == proposal_id
+            ]
+        if limit is not None:
+            events = events[-limit:] if limit > 0 else []
+
+        return events
 
 
 trace_service = TraceService()
-

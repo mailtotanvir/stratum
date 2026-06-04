@@ -1,4 +1,6 @@
-from sqlalchemy import Integer, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -22,7 +24,21 @@ class TaskRecord(Base):
     __tablename__ = "tasks"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    created_at: Mapped[str] = mapped_column(Text, index=True)
-    updated_at: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, index=True)
-    description: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary: Mapped[str | None] = mapped_column(Text)
+
+
+class ProposalRecord(Base):
+    __tablename__ = "proposals"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    task_id: Mapped[str | None] = mapped_column(Text, index=True)
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision: Mapped[str | None] = mapped_column(Text)

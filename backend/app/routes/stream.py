@@ -60,5 +60,18 @@ async def demo_event(request: DemoEventRequest | None = None) -> dict[str, Any]:
 
 
 @router.get("/trace")
-def trace() -> list[dict[str, Any]]:
-    return [event.to_dict() for event in event_service.list_persisted_events()]
+def trace(
+    type: str | None = None,
+    task_id: str | None = None,
+    proposal_id: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        event.to_dict()
+        for event in event_service.list_persisted_events(
+            event_type=type,
+            task_id=task_id,
+            proposal_id=proposal_id,
+            limit=limit,
+        )
+    ]

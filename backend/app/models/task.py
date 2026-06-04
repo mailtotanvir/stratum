@@ -4,24 +4,23 @@ from pydantic import BaseModel
 
 
 class TaskStatus(StrEnum):
-    PENDING = "pending"
+    CREATED = "created"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
-    CANCELLED = "cancelled"
 
 
 class TaskCreate(BaseModel):
-    description: str
+    title: str
 
 
 class Task(BaseModel):
     id: str
-    created_at: str
-    updated_at: str
     status: TaskStatus
-    description: str
+    title: str
+    created_at: str
+    completed_at: str | None = None
+    summary: str | None = None
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, object]:
         return self.model_dump(mode="json")
-

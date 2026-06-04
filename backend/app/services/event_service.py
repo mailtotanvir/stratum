@@ -22,8 +22,19 @@ class EventService:
         async with self._lock:
             return list(self._events)
 
-    def list_persisted_events(self) -> list[RuntimeEvent]:
-        return self._trace_store.list_events()
+    def list_persisted_events(
+        self,
+        event_type: str | None = None,
+        task_id: str | None = None,
+        proposal_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[RuntimeEvent]:
+        return self._trace_store.list_events(
+            event_type=event_type,
+            task_id=task_id,
+            proposal_id=proposal_id,
+            limit=limit,
+        )
 
     async def emit_event(
         self,
@@ -49,6 +60,22 @@ class EventService:
                 subscriber.put_nowait(event)
 
             return event
+
+    def emit_event_sync(
+        self,
+        event_type: EventType | str,
+        message: str,
+        severity: Severity | str = Severity.INFO,
+        metadata: dict[str, Any] | None = None,
+    ) -> RuntimeEvent:
+        return asyncio.run(
+            self.emit_event(
+                event_type=event_type,
+                severity=severity,
+                message=message,
+                metadata=metadata,
+            )
+        )
 
     @asynccontextmanager
     async def subscribe(
@@ -79,6 +106,20 @@ async def emit_event(
     metadata: dict[str, Any] | None = None,
 ) -> RuntimeEvent:
     return await event_service.emit_event(
+        event_type=event_type,
+        severity=severity,
+        message=message,
+        metadata=metadata,
+    )
+
+
+def emit_event_sync(
+    event_type: EventType | str,
+    message: str,
+    severity: Severity | str = Severity.INFO,
+    metadata: dict[str, Any] | None = None,
+) -> RuntimeEvent:
+    return event_service.emit_event_sync(
         event_type=event_type,
         severity=severity,
         message=message,
