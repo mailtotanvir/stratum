@@ -15,7 +15,7 @@ class RuntimeEventRecord(Base):
     event_id: Mapped[int] = mapped_column(Integer, index=True)
     ts: Mapped[str] = mapped_column(Text)
     type: Mapped[str] = mapped_column(Text, index=True)
-    severity: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str] = mapped_column(Text)
     metadata_json: Mapped[str] = mapped_column(Text)
 

@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Severity(StrEnum):
@@ -32,9 +32,14 @@ class RuntimeEvent(BaseModel):
     id: int
     ts: str
     type: EventType
-    severity: Severity
+    severity: Severity = Severity.INFO
     message: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def default_severity(cls, value: Any) -> Any:
+        return Severity.INFO if value is None else value
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")

@@ -40,9 +40,13 @@ class EventService:
         self,
         event_type: EventType | str,
         message: str,
-        severity: Severity | str = Severity.INFO,
+        severity: Severity | str | dict[str, Any] = Severity.INFO,
         metadata: dict[str, Any] | None = None,
     ) -> RuntimeEvent:
+        if isinstance(severity, dict) and metadata is None:
+            metadata = severity
+            severity = Severity.INFO
+
         async with self._lock:
             event = RuntimeEvent(
                 id=self._next_id,
@@ -65,7 +69,7 @@ class EventService:
         self,
         event_type: EventType | str,
         message: str,
-        severity: Severity | str = Severity.INFO,
+        severity: Severity | str | dict[str, Any] = Severity.INFO,
         metadata: dict[str, Any] | None = None,
     ) -> RuntimeEvent:
         return asyncio.run(
@@ -102,7 +106,7 @@ event_service = EventService()
 async def emit_event(
     event_type: EventType | str,
     message: str,
-    severity: Severity | str = Severity.INFO,
+    severity: Severity | str | dict[str, Any] = Severity.INFO,
     metadata: dict[str, Any] | None = None,
 ) -> RuntimeEvent:
     return await event_service.emit_event(
@@ -116,7 +120,7 @@ async def emit_event(
 def emit_event_sync(
     event_type: EventType | str,
     message: str,
-    severity: Severity | str = Severity.INFO,
+    severity: Severity | str | dict[str, Any] = Severity.INFO,
     metadata: dict[str, Any] | None = None,
 ) -> RuntimeEvent:
     return event_service.emit_event_sync(

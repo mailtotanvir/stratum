@@ -17,6 +17,11 @@ def proposal_diagnostics() -> dict[str, Any]:
     return diagnostics_service.proposal_health()
 
 
+@router.get("/diagnostics/governance")
+def governance_diagnostics() -> dict[str, Any]:
+    return diagnostics_service.governance_health()
+
+
 @router.get("/diagnostics/summary")
 def diagnostics_summary() -> dict[str, Any]:
     return diagnostics_service.runtime_summary()

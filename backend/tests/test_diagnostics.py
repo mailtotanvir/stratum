@@ -452,6 +452,20 @@ def test_diagnostics_summary_empty(tmp_path) -> None:
             "missing_task_id_count": 0,
             "missing_proposal_id_count": 0,
         },
+        "governance": {
+            "severity_counts": {
+                "info": 0,
+                "warning": 0,
+                "error": 0,
+                "critical": 0,
+            },
+            "highest_severity": None,
+            "has_critical": False,
+            "status": "ok",
+            "error_budget": {
+                "status": "within_budget",
+            },
+        },
     }
 
 
@@ -487,6 +501,18 @@ def test_diagnostics_summary_with_task_proposal_and_event_data(tmp_path) -> None
         },
         "unresolved_count": 0,
         "inconsistent": 0,
+    }
+
+
+def test_diagnostics_summary_includes_existing_top_level_fields(tmp_path) -> None:
+    _, _, _, service = make_diagnostics_services(tmp_path)
+
+    assert set(service.runtime_summary()) == {
+        "events",
+        "tasks",
+        "proposals",
+        "integrity",
+        "governance",
     }
 
 
@@ -534,6 +560,71 @@ def test_diagnostics_summary_reflects_missing_metadata_counts(tmp_path) -> None:
         }
 
     asyncio.run(run_flow())
+
+
+def test_diagnostics_summary_includes_severity_counts(tmp_path) -> None:
+    events, _, _, service = make_diagnostics_services(tmp_path)
+
+    events.emit_event_sync(EventType.TASK_CREATED, "Created")
+    events.emit_event_sync(EventType.WARNING, "Warning", severity="warning")
+    events.emit_event_sync(EventType.ERROR, "Error", severity="error")
+
+    assert service.runtime_summary()["governance"]["severity_counts"] == {
+        "info": 1,
+        "warning": 1,
+        "error": 1,
+        "critical": 0,
+    }
+
+
+def test_diagnostics_summary_reflects_highest_severity(tmp_path) -> None:
+    events, _, _, service = make_diagnostics_services(tmp_path)
+
+    events.emit_event_sync(EventType.TASK_CREATED, "Created")
+    events.emit_event_sync(EventType.WARNING, "Warning", severity="warning")
+
+    assert service.runtime_summary()["governance"]["highest_severity"] == "warning"
+
+
+def test_diagnostics_summary_reflects_critical_event(tmp_path) -> None:
+    events, _, _, service = make_diagnostics_services(tmp_path)
+
+    events.emit_event_sync(EventType.ERROR, "Critical", severity="critical")
+
+    assert service.runtime_summary()["governance"]["has_critical"] is True
+    assert service.runtime_summary()["governance"]["status"] == "critical"
+
+
+def test_diagnostics_summary_includes_compact_error_budget_status(
+    tmp_path,
+) -> None:
+    events, _, _, service = make_diagnostics_services(tmp_path)
+
+    for index in range(6):
+        events.emit_event_sync(
+            EventType.WARNING,
+            f"Warning {index}",
+            severity="warning",
+        )
+
+    assert service.runtime_summary()["governance"]["error_budget"] == {
+        "status": "budget_exhausted",
+    }
+
+
+def test_diagnostics_summary_status_matches_governance_health(tmp_path) -> None:
+    events, _, _, service = make_diagnostics_services(tmp_path)
+    diagnostics_routes.diagnostics_service = service
+    client = TestClient(app)
+
+    events.emit_event_sync(EventType.WARNING, "Warning", severity="warning")
+
+    summary = client.get("/diagnostics/summary")
+    governance = client.get("/diagnostics/governance")
+
+    assert summary.status_code == 200
+    assert governance.status_code == 200
+    assert summary.json()["governance"]["status"] == governance.json()["status"]
 
 
 def test_diagnostics_summary_endpoint(tmp_path) -> None:

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.schema import Base, RuntimeEventRecord
 from app.db.session import create_session_factory, create_sqlite_engine
-from app.models.runtime_event import RuntimeEvent
+from app.models.runtime_event import RuntimeEvent, Severity
 
 
 class TraceService:
@@ -54,7 +54,7 @@ class TraceService:
                 id=record.event_id,
                 ts=record.ts,
                 type=record.type,
-                severity=record.severity,
+                severity=record.severity or Severity.INFO,
                 message=record.message,
                 metadata=json.loads(record.metadata_json),
             )
