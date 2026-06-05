@@ -31,6 +31,50 @@ class TaskRecord(Base):
     summary: Mapped[str | None] = mapped_column(Text)
 
 
+class RuntimeExecutionRecord(Base):
+    __tablename__ = "runtime_executions"
+
+    task_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    state: Mapped[str] = mapped_column(Text, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    interrupted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class ReflectionRequestRecord(Base):
+    __tablename__ = "reflection_requests"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    task_id: Mapped[str] = mapped_column(Text, index=True)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    reasons_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class InterruptRequestRecord(Base):
+    __tablename__ = "interrupt_requests"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    task_id: Mapped[str] = mapped_column(Text, index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class StopRequestRecord(Base):
+    __tablename__ = "stop_requests"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    task_id: Mapped[str] = mapped_column(Text, index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ProposalRecord(Base):
     __tablename__ = "proposals"
 
