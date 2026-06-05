@@ -113,6 +113,18 @@ class ToolInvocationService:
         )
         return record
 
+    def mark_completed_without_event(
+        self,
+        invocation_id: str,
+        output_payload: dict[str, Any] | None = None,
+    ) -> ToolInvocationRecord:
+        return self._mark(
+            invocation_id,
+            ToolInvocationStatus.COMPLETED,
+            output_payload=output_payload,
+            completed_at=datetime.now(UTC),
+        )
+
     def mark_failed(
         self,
         invocation_id: str,
@@ -131,6 +143,18 @@ class ToolInvocationService:
             severity=Severity.ERROR,
         )
         return record
+
+    def mark_failed_without_event(
+        self,
+        invocation_id: str,
+        output_payload: dict[str, Any] | None = None,
+    ) -> ToolInvocationRecord:
+        return self._mark(
+            invocation_id,
+            ToolInvocationStatus.FAILED,
+            output_payload=output_payload,
+            completed_at=datetime.now(UTC),
+        )
 
     def get_invocation(self, invocation_id: str) -> ToolInvocationRecord:
         with self.session_factory() as session:

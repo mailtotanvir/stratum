@@ -72,6 +72,27 @@ ArtifactRecord
 RuntimeEvent records each lifecycle transition.
 ```
 
+## Tool Execution Artifact Semantics
+
+`ToolExecutionResult` may include adapter-declared artifacts. These artifacts are
+declarations of outputs, not filesystem writes. `ToolExecutionService` registers
+declared artifacts as `ArtifactRecord` rows.
+
+This layer is registry-only persistence:
+
+- no files are created by this layer
+- `ArtifactRecord` records path, kind, and metadata only
+- actual file-writing tools will be added later behind real adapters
+
+Created artifacts are attached to the invocation's task and runtime session when
+available. `RuntimeArtifactLinkRecord` links artifacts to execution attempts.
+This lets future UI, replay, and audit surfaces show outputs per runtime
+session.
+
+Artifact registration is part of the execution outcome. Invalid artifact kinds
+cause invocation failure. An invocation must not be marked `completed` if
+artifact registration fails. `tool_execution_failed` should describe the failure.
+
 ## Future Behavior
 
 Future runtime work may add:
@@ -87,6 +108,8 @@ Future runtime work may add:
 This ADR does not introduce:
 
 - actual tool execution
+- real filesystem writes
+- patch application
 - shell execution
 - filesystem mutation
 - ReAct loop

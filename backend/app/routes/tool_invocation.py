@@ -3,6 +3,10 @@ from fastapi import APIRouter, HTTPException
 from app.db.schema import ToolInvocationRecord
 from app.models.tool_invocation import ToolInvocation, ToolInvocationCreate
 from app.services.runtime_session_service import RuntimeSessionNotFoundError
+from app.services.tool_execution_service import (
+    ToolDisabledError,
+    tool_execution_service,
+)
 from app.services.tool_invocation_service import (
     ToolInvocationNotFoundError,
     tool_invocation_service,
@@ -76,3 +80,15 @@ def get_tool_invocation(invocation_id: str) -> ToolInvocation:
         )
     except ToolInvocationNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/tool-invocations/{invocation_id}/execute")
+async def execute_tool_invocation(invocation_id: str) -> ToolInvocation:
+    try:
+        return to_tool_invocation(
+            await tool_execution_service.execute_invocation(invocation_id)
+        )
+    except ToolInvocationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ToolDisabledError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

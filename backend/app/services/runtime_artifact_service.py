@@ -58,6 +58,25 @@ class RuntimeArtifactService:
         artifact_id: str,
         session_id: str | None = None,
     ) -> RuntimeArtifactLinkRecord:
+        record = self.attach_artifact_without_event(
+            task_id=task_id,
+            artifact_id=artifact_id,
+            session_id=session_id,
+        )
+
+        self._emit_event(
+            EventType.RUNTIME_ARTIFACT_ATTACHED,
+            record,
+            message=f"Runtime artifact attached: {artifact_id}",
+        )
+        return record
+
+    def attach_artifact_without_event(
+        self,
+        task_id: str,
+        artifact_id: str,
+        session_id: str | None = None,
+    ) -> RuntimeArtifactLinkRecord:
         self._artifacts.get_artifact(artifact_id)
         if session_id is not None:
             runtime_session = self._sessions.get_session(session_id)
@@ -97,11 +116,6 @@ class RuntimeArtifactService:
             session.refresh(record)
             session.expunge(record)
 
-        self._emit_event(
-            EventType.RUNTIME_ARTIFACT_ATTACHED,
-            record,
-            message=f"Runtime artifact attached: {artifact_id}",
-        )
         return record
 
     def list_task_artifacts(

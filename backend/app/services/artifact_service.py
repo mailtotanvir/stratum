@@ -54,6 +54,29 @@ class ArtifactService:
         proposal_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ArtifactRecord:
+        record = self.create_artifact_without_event(
+            path=path,
+            kind=kind,
+            task_id=task_id,
+            proposal_id=proposal_id,
+            metadata=metadata,
+        )
+
+        self._emit_event(
+            EventType.ARTIFACT_CREATED,
+            record,
+            message=f"Artifact registered: {record.path}",
+        )
+        return record
+
+    def create_artifact_without_event(
+        self,
+        path: str,
+        kind: str = ArtifactKind.UNKNOWN.value,
+        task_id: str | None = None,
+        proposal_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ArtifactRecord:
         try:
             parsed_kind = ArtifactKind(kind)
         except ValueError as exc:
@@ -79,11 +102,6 @@ class ArtifactService:
             session.refresh(record)
             session.expunge(record)
 
-        self._emit_event(
-            EventType.ARTIFACT_CREATED,
-            record,
-            message=f"Artifact registered: {record.path}",
-        )
         return record
 
     def get_artifact(self, artifact_id: str) -> ArtifactRecord:
