@@ -23,6 +23,8 @@ def test_create_proposal_persists(tmp_path) -> None:
     assert persisted.title == "Add validation"
     assert persisted.body == "Validate proposal inputs."
     assert persisted.task_id == "task-1"
+    assert persisted.source_type == "manual"
+    assert persisted.source_id is None
     assert persisted.status == "proposed"
     assert persisted.resolved_at is None
     assert persisted.decision is None
@@ -59,6 +61,29 @@ def test_list_proposals_filters_by_task_id(tmp_path) -> None:
     assert [proposal.id for proposal in service.list_proposals(task_id="task-1")] == [
         first.id,
     ]
+
+
+def test_get_proposal_source_returns_lineage(tmp_path) -> None:
+    service = ProposalService(tmp_path / "proposals.db")
+    manual = service.create_proposal("Manual", "Body")
+    planner = service.create_proposal(
+        "Planner",
+        "Body",
+        source_type="planner_recommendation",
+        source_id="recommendation-1",
+    )
+
+    assert service.get_proposal_source(manual.id) == {
+        "proposal_id": manual.id,
+        "source_type": "manual",
+        "source_id": None,
+    }
+    assert service.get_proposal_source(planner.id) == {
+        "proposal_id": planner.id,
+        "source_type": "planner_recommendation",
+        "source_id": "recommendation-1",
+        "recommendation_id": "recommendation-1",
+    }
 
 
 def test_approve_transition(tmp_path) -> None:
@@ -109,6 +134,10 @@ def test_proposal_lifecycle_events_appear_in_trace(tmp_path) -> None:
     ]
     assert persisted[-1]["metadata"]["decision"] == "approve"
     assert persisted[-1]["metadata"]["status"] == "approved"
+    assert persisted[-2]["metadata"]["source_type"] == "manual"
+    assert persisted[-2]["metadata"]["source_id"] is None
+    assert persisted[-1]["metadata"]["source_type"] == "manual"
+    assert persisted[-1]["metadata"]["source_id"] is None
 
 
 def test_double_response_rejected(tmp_path) -> None:
@@ -159,6 +188,10 @@ def test_proposal_api_create_get_list_and_filters(tmp_path) -> None:
         json={"title": "Second", "body": "Body", "task_id": "task-2"},
     ).json()
 
+    assert first["source_type"] == "manual"
+    assert first["source_id"] is None
+    assert second["source_type"] == "manual"
+    assert second["source_id"] is None
     assert client.get(f"/proposals/{first['id']}").json() == first
     assert client.get("/proposals").json() == [second, first]
     assert client.get("/proposals", params={"status": "proposed"}).json() == [

@@ -3,6 +3,8 @@ import pytest
 from app.services.artifact_service import artifact_service
 from app.services.event_service import event_service
 from app.services.interrupt_service import interrupt_service
+from app.services.planner_recommendation_service import planner_recommendation_service
+from app.services.proposal_service import proposal_service
 from app.services.proposal_artifact_service import proposal_artifact_service
 from app.services.reflection_service import reflection_service
 from app.services.runtime_artifact_service import runtime_artifact_service
@@ -19,6 +21,8 @@ def use_temp_trace_store(tmp_path):
     artifact_service.set_db_path(tmp_path / "artifacts.db")
     event_service.set_trace_store(TraceService(tmp_path / "stratum.db"))
     interrupt_service.set_db_path(tmp_path / "interrupts.db")
+    planner_recommendation_service.set_db_path(tmp_path / "planner_recommendations.db")
+    proposal_service.set_db_path(tmp_path / "proposals.db")
     proposal_artifact_service.set_db_path(tmp_path / "proposal_artifacts.db")
     reflection_service.set_db_path(tmp_path / "reflections.db")
     runtime_artifact_service.set_db_path(tmp_path / "runtime_artifacts.db")

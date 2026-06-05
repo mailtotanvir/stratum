@@ -6,8 +6,11 @@ from app.main import app
 from app.models.runtime_event import EventType
 from app.db.schema import ProposalRecord, TaskRecord
 from app.routes import diagnostics as diagnostics_routes
+from app.models.planner import PlannerRequest, PlannerResponse
+from app.models.tool import Tool
 from app.services.diagnostics_service import DiagnosticsService
 from app.services.event_service import EventService
+from app.services.planner_recommendation_service import PlannerRecommendationService
 from app.services.proposal_service import ProposalService
 from app.services.reconstruction_service import ReconstructionService
 from app.services.task_service import TaskService
@@ -262,9 +265,18 @@ def test_proposal_diagnostics_empty(tmp_path) -> None:
             "approved": 0,
             "rejected": 0,
         },
+        "source_type_counts": {
+            "manual": 0,
+            "planner_recommendation": 0,
+        },
+        "sources": [],
         "event_counts": {
             "proposal_generated": 0,
             "proposal_resolved": 0,
+        },
+        "event_source_type_counts": {
+            "manual": 0,
+            "planner_recommendation": 0,
         },
         "unresolved_count": 0,
         "missing_proposal_id_count": 0,
@@ -298,6 +310,10 @@ def test_proposal_diagnostics_status_counts_and_unresolved_count(tmp_path) -> No
         "approved": 1,
         "rejected": 1,
     }
+    assert health["source_type_counts"] == {
+        "manual": 3,
+        "planner_recommendation": 0,
+    }
     assert health["unresolved_count"] == 1
 
 
@@ -320,6 +336,51 @@ def test_proposal_diagnostics_lifecycle_event_counts(tmp_path) -> None:
     assert health["event_counts"] == {
         "proposal_generated": 2,
         "proposal_resolved": 2,
+    }
+    assert health["event_source_type_counts"] == {
+        "manual": 4,
+        "planner_recommendation": 0,
+    }
+
+
+def test_proposal_diagnostics_includes_source_lineage(tmp_path) -> None:
+    trace_store = TraceService(tmp_path / "trace.db")
+    events = EventService(trace_store)
+    proposals = ProposalService(tmp_path / "proposals.db", events=events)
+    service = DiagnosticsService(
+        events=EventService(trace_store),
+        proposals=proposals,
+    )
+
+    manual = proposals.create_proposal("Manual", "Body")
+    planner = proposals.create_proposal(
+        "Planner",
+        "Body",
+        source_type="planner_recommendation",
+        source_id="recommendation-1",
+    )
+
+    health = service.proposal_health()
+    sources = {source["proposal_id"]: source for source in health["sources"]}
+
+    assert health["source_type_counts"] == {
+        "manual": 1,
+        "planner_recommendation": 1,
+    }
+    assert health["event_source_type_counts"] == {
+        "manual": 1,
+        "planner_recommendation": 1,
+    }
+    assert sources[manual.id] == {
+        "proposal_id": manual.id,
+        "source_type": "manual",
+        "source_id": None,
+    }
+    assert sources[planner.id] == {
+        "proposal_id": planner.id,
+        "source_type": "planner_recommendation",
+        "source_id": "recommendation-1",
+        "recommendation_id": "recommendation-1",
     }
 
 
@@ -409,14 +470,171 @@ def test_proposal_diagnostics_endpoint(tmp_path) -> None:
         "approved": 1,
         "rejected": 0,
     }
+    assert body["source_type_counts"] == {
+        "manual": 1,
+        "planner_recommendation": 0,
+    }
+    assert body["sources"] == [
+        {
+            "proposal_id": created.id,
+            "source_type": "manual",
+            "source_id": None,
+        }
+    ]
     assert body["event_counts"] == {
         "proposal_generated": 1,
         "proposal_resolved": 1,
+    }
+    assert body["event_source_type_counts"] == {
+        "manual": 2,
+        "planner_recommendation": 0,
     }
     assert body["unresolved_count"] == 0
     assert body["missing_proposal_id_count"] == 0
     assert body["missing_proposal_id_by_type"] == {}
     assert body["latest_proposal_event_type"] == "proposal_resolved"
+
+
+def diagnostics_tool() -> Tool:
+    return Tool(
+        id="tool-1",
+        name="shell.read",
+        description="Read a file.",
+        enabled=True,
+        created_at="2026-06-05T00:00:00+00:00",
+        updated_at="2026-06-05T00:00:00+00:00",
+        parameters=[],
+    )
+
+
+def create_diagnostics_recommendation(
+    recommendations: PlannerRecommendationService,
+    session_id: str,
+    governance_status: str = "ok",
+):
+    return recommendations.create_recommendation(
+        PlannerRequest(
+            task_id=f"task-{session_id}",
+            session_id=session_id,
+            objective=f"Objective {session_id}",
+            available_tools=[diagnostics_tool()],
+            context={},
+        ),
+        PlannerResponse(
+            proposed_tool=diagnostics_tool(),
+            rationale="Selected first enabled tool: shell.read",
+            confidence=0.75,
+        ),
+        {"governance_status": governance_status},
+    )
+
+
+def test_planner_recommendation_diagnostics_counts_and_sessions(tmp_path) -> None:
+    trace_store = TraceService(tmp_path / "trace.db")
+    events = EventService(trace_store)
+    recommendations = PlannerRecommendationService(
+        tmp_path / "recommendations.db",
+        events=events,
+    )
+    tasks = TaskService(tmp_path / "tasks.db", events=events)
+    proposals = ProposalService(tmp_path / "proposals.db", events=events)
+    reconstruction = ReconstructionService(
+        events=EventService(trace_store),
+        tasks=tasks,
+        proposals=proposals,
+        recommendations=recommendations,
+    )
+    service = DiagnosticsService(
+        events=EventService(trace_store),
+        tasks=tasks,
+        proposals=proposals,
+        recommendations=recommendations,
+        reconstruction=reconstruction,
+    )
+
+    first = create_diagnostics_recommendation(recommendations, "session-1", "ok")
+    second = create_diagnostics_recommendation(
+        recommendations,
+        "session-1",
+        "degraded",
+    )
+    third = create_diagnostics_recommendation(recommendations, "session-2", "ok")
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_PROMOTED,
+        "Recommendation promoted",
+        metadata={
+            "recommendation_id": first.id,
+            "proposal_id": "proposal-1",
+            "task_id": first.task_id,
+            "session_id": first.session_id,
+        },
+    )
+
+    health = service.planner_recommendation_health()
+
+    assert health["total_recommendations"] == 3
+    assert health["governance_status_counts"] == {
+        "ok": 2,
+        "degraded": 1,
+    }
+    assert health["promoted_count"] == 1
+    assert health["unpromoted_count"] == 2
+    assert health["by_session_id"] == {
+        "session-1": [first.id, second.id],
+        "session-2": [third.id],
+    }
+    assert health["consistency"]["consistent"] is True
+
+
+def test_planner_recommendation_diagnostics_detects_missing_promotion_reference(
+    tmp_path,
+) -> None:
+    events = EventService(TraceService(tmp_path / "trace.db"))
+    service = DiagnosticsService(events=events)
+
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_PROMOTED,
+        "Missing recommendation promoted",
+        metadata={
+            "recommendation_id": "missing-recommendation",
+            "proposal_id": "proposal-1",
+            "task_id": "task-1",
+            "session_id": "session-1",
+        },
+    )
+
+    health = service.planner_recommendation_health()
+
+    assert health["total_recommendations"] == 0
+    assert health["consistency"]["consistent"] is False
+    assert health["consistency"]["missing_promotion_references"] == [
+        "missing-recommendation"
+    ]
+
+
+def test_planner_recommendation_diagnostics_endpoint(tmp_path) -> None:
+    trace_store = TraceService(tmp_path / "trace.db")
+    events = EventService(trace_store)
+    recommendations = PlannerRecommendationService(
+        tmp_path / "recommendations.db",
+        events=events,
+    )
+    diagnostics_routes.diagnostics_service = DiagnosticsService(
+        events=EventService(trace_store),
+        recommendations=recommendations,
+        reconstruction=ReconstructionService(
+            events=EventService(trace_store),
+            recommendations=recommendations,
+        ),
+    )
+    create_diagnostics_recommendation(recommendations, "session-1", "ok")
+    client = TestClient(app)
+
+    response = client.get("/diagnostics/planner-recommendations")
+
+    assert response.status_code == 200
+    assert response.json()["total_recommendations"] == 1
+    assert response.json()["governance_status_counts"] == {"ok": 1}
 
 
 def test_diagnostics_summary_empty(tmp_path) -> None:
@@ -445,8 +663,17 @@ def test_diagnostics_summary_empty(tmp_path) -> None:
                 "approved": 0,
                 "rejected": 0,
             },
+            "source_type_counts": {
+                "manual": 0,
+                "planner_recommendation": 0,
+            },
             "unresolved_count": 0,
             "inconsistent": 0,
+        },
+        "planner_recommendations": {
+            "planner_recommendation_count": 0,
+            "planner_recommendation_promoted_count": 0,
+            "planner_recommendation_unpromoted_count": 0,
         },
         "integrity": {
             "missing_task_id_count": 0,
@@ -499,8 +726,59 @@ def test_diagnostics_summary_with_task_proposal_and_event_data(tmp_path) -> None
             "approved": 1,
             "rejected": 0,
         },
+        "source_type_counts": {
+            "manual": 1,
+            "planner_recommendation": 0,
+        },
         "unresolved_count": 0,
         "inconsistent": 0,
+    }
+    assert summary["planner_recommendations"] == {
+        "planner_recommendation_count": 0,
+        "planner_recommendation_promoted_count": 0,
+        "planner_recommendation_unpromoted_count": 0,
+    }
+
+
+def test_diagnostics_summary_includes_planner_recommendation_counts(tmp_path) -> None:
+    trace_store = TraceService(tmp_path / "trace.db")
+    events = EventService(trace_store)
+    recommendations = PlannerRecommendationService(
+        tmp_path / "recommendations.db",
+        events=events,
+    )
+    tasks = TaskService(tmp_path / "tasks.db", events=events)
+    proposals = ProposalService(tmp_path / "proposals.db", events=events)
+    reconstruction = ReconstructionService(
+        events=EventService(trace_store),
+        tasks=tasks,
+        proposals=proposals,
+        recommendations=recommendations,
+    )
+    service = DiagnosticsService(
+        events=EventService(trace_store),
+        tasks=tasks,
+        proposals=proposals,
+        recommendations=recommendations,
+        reconstruction=reconstruction,
+    )
+    promoted = create_diagnostics_recommendation(recommendations, "session-1")
+    create_diagnostics_recommendation(recommendations, "session-2")
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_PROMOTED,
+        "Recommendation promoted",
+        metadata={
+            "recommendation_id": promoted.id,
+            "proposal_id": "proposal-1",
+            "task_id": promoted.task_id,
+            "session_id": promoted.session_id,
+        },
+    )
+
+    assert service.runtime_summary()["planner_recommendations"] == {
+        "planner_recommendation_count": 2,
+        "planner_recommendation_promoted_count": 1,
+        "planner_recommendation_unpromoted_count": 1,
     }
 
 
@@ -511,6 +789,7 @@ def test_diagnostics_summary_includes_existing_top_level_fields(tmp_path) -> Non
         "events",
         "tasks",
         "proposals",
+        "planner_recommendations",
         "integrity",
         "governance",
     }

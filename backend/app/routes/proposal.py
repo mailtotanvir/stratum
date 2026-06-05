@@ -24,6 +24,8 @@ def to_proposal(record: ProposalRecord) -> Proposal:
     return Proposal(
         id=record.id,
         task_id=record.task_id,
+        source_type=record.source_type,
+        source_id=record.source_id,
         title=record.title,
         body=record.body,
         status=record.status,

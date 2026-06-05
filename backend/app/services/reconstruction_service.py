@@ -3,6 +3,10 @@ from typing import Any
 from app.db.schema import ProposalRecord, TaskRecord
 from app.models.runtime_event import EventType, RuntimeEvent
 from app.services.event_service import EventService, event_service
+from app.services.planner_recommendation_service import (
+    PlannerRecommendationService,
+    planner_recommendation_service,
+)
 from app.services.proposal_service import ProposalService, proposal_service
 from app.services.task_service import TaskService, task_service
 
@@ -19,6 +23,11 @@ PROPOSAL_LIFECYCLE_EVENTS = {
     EventType.PROPOSAL_RESOLVED.value,
 }
 
+PLANNER_RECOMMENDATION_EVENTS = {
+    EventType.PLANNER_RECOMMENDATION_CREATED.value,
+    EventType.PLANNER_RECOMMENDATION_PROMOTED.value,
+}
+
 
 class ReconstructionService:
     def __init__(
@@ -26,10 +35,12 @@ class ReconstructionService:
         events: EventService | None = None,
         tasks: TaskService | None = None,
         proposals: ProposalService | None = None,
+        recommendations: PlannerRecommendationService | None = None,
     ) -> None:
         self._events = events or event_service
         self._tasks = tasks or task_service
         self._proposals = proposals or proposal_service
+        self._recommendations = recommendations or planner_recommendation_service
 
     def reconstruct_task_state(self, task_id: str) -> dict[str, Any]:
         states = self._reconstruct_states()
@@ -119,6 +130,52 @@ class ReconstructionService:
             "items": items,
         }
 
+    def get_reconstructed_recommendations(
+        self,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        recommendations = list(self._reconstruct_recommendation_states().values())
+        if session_id is not None:
+            recommendations = [
+                recommendation
+                for recommendation in recommendations
+                if recommendation.get("session_id") == session_id
+            ]
+        return recommendations
+
+    def get_recommendation_lineage(self, recommendation_id: str) -> dict[str, Any]:
+        states = self._reconstruct_recommendation_states()
+        return states.get(
+            recommendation_id,
+            {
+                "recommendation_id": recommendation_id,
+                "found": False,
+                "promoted": False,
+                "proposal_id": None,
+            },
+        )
+
+    def recommendation_consistency_health(self) -> dict[str, Any]:
+        states = self._reconstruct_recommendation_states()
+        missing_promotion_references = [
+            recommendation_id
+            for recommendation_id, state in states.items()
+            if state["promoted"] and not state["found"]
+        ]
+        missing_record_events: list[str] = []
+        for record in self._recommendations.list_recommendations():
+            if record.id not in states:
+                missing_record_events.append(record.id)
+
+        inconsistent = len(missing_promotion_references) + len(missing_record_events)
+        return {
+            "checked": len(states),
+            "consistent": inconsistent == 0,
+            "inconsistent": inconsistent,
+            "missing_promotion_references": missing_promotion_references,
+            "missing_record_events": missing_record_events,
+        }
+
     def _reconstruct_states(self) -> dict[str, dict[str, Any]]:
         states: dict[str, dict[str, Any]] = {}
 
@@ -146,6 +203,21 @@ class ReconstructionService:
                 continue
 
             self._apply_proposal_event(states, proposal_id, event)
+
+        return states
+
+    def _reconstruct_recommendation_states(self) -> dict[str, dict[str, Any]]:
+        states: dict[str, dict[str, Any]] = {}
+
+        for event in self._events.list_persisted_events():
+            if event.type.value not in PLANNER_RECOMMENDATION_EVENTS:
+                continue
+
+            recommendation_id = event.metadata.get("recommendation_id")
+            if not isinstance(recommendation_id, str):
+                continue
+
+            self._apply_recommendation_event(states, recommendation_id, event)
 
         return states
 
@@ -213,6 +285,8 @@ class ReconstructionService:
                 "id": proposal_id,
                 "found": True,
                 "task_id": None,
+                "source_type": "manual",
+                "source_id": None,
                 "title": None,
                 "body": None,
                 "status": None,
@@ -224,6 +298,8 @@ class ReconstructionService:
 
         for field in [
             "task_id",
+            "source_type",
+            "source_id",
             "title",
             "body",
             "created_at",
@@ -252,6 +328,69 @@ class ReconstructionService:
             if state["resolved_at"] is None:
                 state["resolved_at"] = event.ts
 
+    def _apply_recommendation_event(
+        self,
+        states: dict[str, dict[str, Any]],
+        recommendation_id: str,
+        event: RuntimeEvent,
+    ) -> None:
+        metadata = event.metadata
+        state = states.setdefault(
+            recommendation_id,
+            {
+                "recommendation_id": recommendation_id,
+                "found": False,
+                "task_id": None,
+                "session_id": None,
+                "objective": None,
+                "proposed_tool": None,
+                "rationale": None,
+                "confidence": None,
+                "governance_status": None,
+                "created_at": None,
+                "promoted": False,
+                "proposal_id": None,
+            },
+        )
+
+        if event.type == EventType.PLANNER_RECOMMENDATION_CREATED:
+            state["found"] = True
+            for field in [
+                "task_id",
+                "session_id",
+                "objective",
+                "rationale",
+                "governance_status",
+                "created_at",
+            ]:
+                value = metadata.get(field)
+                if isinstance(value, str):
+                    state[field] = value
+
+            proposed_tool = metadata.get("proposed_tool")
+            if isinstance(proposed_tool, dict) or proposed_tool is None:
+                state["proposed_tool"] = proposed_tool
+
+            confidence = metadata.get("confidence")
+            if isinstance(confidence, (int, float)):
+                state["confidence"] = float(confidence)
+
+            if state["created_at"] is None:
+                state["created_at"] = event.ts
+
+        elif event.type == EventType.PLANNER_RECOMMENDATION_PROMOTED:
+            state["promoted"] = True
+            for field in ["task_id", "session_id"]:
+                value = metadata.get(field)
+                if isinstance(value, str):
+                    state[field] = value
+            proposal_id = metadata.get("proposal_id")
+            if isinstance(proposal_id, str):
+                state["proposal_id"] = proposal_id
+            proposed_tool = metadata.get("proposed_tool")
+            if isinstance(proposed_tool, dict) or proposed_tool is None:
+                state["proposed_tool"] = proposed_tool
+
     def _record_to_state(self, record: TaskRecord) -> dict[str, Any]:
         return {
             "id": record.id,
@@ -272,6 +411,8 @@ class ReconstructionService:
             "id": record.id,
             "found": True,
             "task_id": record.task_id,
+            "source_type": record.source_type,
+            "source_id": record.source_id,
             "title": record.title,
             "body": record.body,
             "status": record.status,
@@ -304,6 +445,8 @@ class ReconstructionService:
         fields = [
             "id",
             "task_id",
+            "source_type",
+            "source_id",
             "title",
             "body",
             "status",

@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -5,14 +7,38 @@ from app.db.schema import (
     ArtifactRecord,
     RuntimeArtifactLinkRecord,
     RuntimeExecutionRecord,
+    ToolParameterRecord,
+    ToolRecord,
 )
 from app.models.artifact import Artifact
+from app.models.planner import (
+    PlannerPreviewRequest,
+    PlannerProposalPreviewResponse,
+    PlannerProposalResponse,
+    PlannerRequest,
+    PlannerRecommendation,
+    PlannerRecommendationPromotionResponse,
+    PlannerRecommendationResponse,
+    PlannerResponse,
+)
+from app.models.proposal import Proposal
+from app.models.proposal import ProposalSourceType
 from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskArtifact
 from app.models.runtime_execution import RuntimeExecution
+from app.models.runtime_event import EventType
 from app.models.runtime_session import RuntimeSession
+from app.models.tool import Tool, ToolParameter
 from app.runtime.python_async_runtime import python_async_runtime
 from app.runtime.work_loop import work_loop_service
 from app.services.artifact_service import ArtifactNotFoundError, artifact_service
+from app.services.event_service import event_service
+from app.services.governance_service import governance_service
+from app.services.planner_recommendation_service import (
+    PlannerRecommendationNotFoundError,
+    planner_recommendation_service,
+)
+from app.services.planner_service import planner_service
+from app.services.proposal_service import proposal_service
 from app.services.runtime_artifact_service import (
     RuntimeArtifactAlreadyAttachedError,
     RuntimeArtifactSessionMismatchError,
@@ -27,7 +53,7 @@ from app.services.runtime_session_service import (
     runtime_session_service,
 )
 from app.services.tool_execution_service import ToolDisabledError
-from app.services.tool_registry_service import ToolNotFoundError
+from app.services.tool_registry_service import ToolNotFoundError, tool_registry_service
 
 router = APIRouter()
 
@@ -78,6 +104,83 @@ def to_runtime_session(record) -> RuntimeSession:
     )
 
 
+def to_proposal(record) -> Proposal:
+    return Proposal(
+        id=record.id,
+        task_id=record.task_id,
+        source_type=record.source_type,
+        source_id=record.source_id,
+        title=record.title,
+        body=record.body,
+        status=record.status,
+        created_at=record.created_at.isoformat(),
+        resolved_at=(
+            record.resolved_at.isoformat()
+            if record.resolved_at is not None
+            else None
+        ),
+        decision=record.decision,
+    )
+
+
+def to_tool_parameter(record: ToolParameterRecord) -> ToolParameter:
+    return ToolParameter(
+        id=record.id,
+        tool_id=record.tool_id,
+        name=record.name,
+        type=record.type,
+        required=record.required,
+    )
+
+
+def to_available_tool(record: ToolRecord) -> Tool:
+    return Tool(
+        id=record.id,
+        name=record.name,
+        description=record.description,
+        enabled=record.enabled,
+        created_at=record.created_at.isoformat(),
+        updated_at=record.updated_at.isoformat(),
+        parameters=[
+            to_tool_parameter(parameter)
+            for parameter in tool_registry_service.list_parameters(record.id)
+        ],
+    )
+
+
+def to_planner_recommendation(record) -> PlannerRecommendation:
+    return PlannerRecommendation(
+        id=record.id,
+        task_id=record.task_id,
+        session_id=record.session_id,
+        objective=record.objective,
+        proposed_tool=planner_recommendation_service.proposed_tool_for(record),
+        rationale=record.rationale,
+        confidence=record.confidence,
+        governance_status=record.governance_status,
+        created_at=record.created_at.isoformat(),
+    )
+
+
+def planner_request_for_session(
+    session_id: str,
+    request: PlannerPreviewRequest,
+) -> PlannerRequest:
+    runtime_session = runtime_session_service.get_session(session_id)
+    available_tools = [
+        to_available_tool(tool)
+        for tool in tool_registry_service.list_tools()
+    ]
+
+    return PlannerRequest(
+        task_id=runtime_session.task_id,
+        session_id=runtime_session.id,
+        objective=request.objective,
+        available_tools=available_tools,
+        context=request.context,
+    )
+
+
 def to_artifact(record: ArtifactRecord) -> Artifact:
     return Artifact(
         id=record.id,
@@ -116,6 +219,210 @@ def get_runtime_session(session_id: str) -> RuntimeSession:
         return to_runtime_session(runtime_session_service.get_session(session_id))
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/runtime/sessions/{session_id}/planner-preview")
+async def planner_preview(
+    session_id: str,
+    request: PlannerPreviewRequest,
+) -> PlannerResponse:
+    try:
+        planner_request = planner_request_for_session(session_id, request)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return await planner_service.plan(planner_request)
+
+
+@router.post("/runtime/sessions/{session_id}/planner-proposal-preview")
+async def planner_proposal_preview(
+    session_id: str,
+    request: PlannerPreviewRequest,
+) -> PlannerProposalPreviewResponse:
+    try:
+        planner_request = planner_request_for_session(session_id, request)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    planner_response = await planner_service.plan(planner_request)
+    governance_preview = governance_service.preview_decision()
+
+    return PlannerProposalPreviewResponse(
+        planner_response=planner_response,
+        governance_preview=governance_preview,
+        proposal_allowed=governance_preview["decision"] != "block",
+    )
+
+
+@router.post("/runtime/sessions/{session_id}/planner-recommendations")
+async def create_planner_recommendation(
+    session_id: str,
+    request: PlannerPreviewRequest,
+) -> PlannerRecommendationResponse:
+    try:
+        planner_request = planner_request_for_session(session_id, request)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    planner_response = await planner_service.plan(planner_request)
+    governance_preview = governance_service.preview_decision()
+    recommendation = await planner_recommendation_service.create_recommendation_async(
+        planner_request=planner_request,
+        planner_response=planner_response,
+        governance_preview=governance_preview,
+    )
+
+    return PlannerRecommendationResponse(
+        recommendation=to_planner_recommendation(recommendation),
+        planner_response=planner_response,
+        governance_preview=governance_preview,
+    )
+
+
+@router.get("/runtime/sessions/{session_id}/planner-recommendations")
+def list_planner_recommendations(
+    session_id: str,
+) -> list[PlannerRecommendation]:
+    try:
+        runtime_session_service.get_session(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return [
+        to_planner_recommendation(record)
+        for record in planner_recommendation_service.list_recommendations(session_id)
+    ]
+
+
+@router.post(
+    "/runtime/sessions/{session_id}/planner-recommendations/"
+    "{recommendation_id}/promote"
+)
+async def promote_planner_recommendation(
+    session_id: str,
+    recommendation_id: str,
+) -> PlannerRecommendationPromotionResponse:
+    try:
+        runtime_session_service.get_session(session_id)
+        recommendation_record = planner_recommendation_service.get_recommendation(
+            recommendation_id
+        )
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlannerRecommendationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if recommendation_record.session_id != session_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Planner recommendation does not belong to runtime session: "
+                f"{recommendation_id}"
+            ),
+        )
+
+    proposed_tool = planner_recommendation_service.proposed_tool_for(
+        recommendation_record
+    )
+    proposal_record = await proposal_service.create_proposal_async(
+        title=f"Planner recommendation proposal: {recommendation_record.objective}",
+        body=json.dumps(
+            {
+                "session_id": recommendation_record.session_id,
+                "task_id": recommendation_record.task_id,
+                "objective": recommendation_record.objective,
+                "proposed_tool": proposed_tool,
+                "planner_rationale": recommendation_record.rationale,
+                "planner_confidence": recommendation_record.confidence,
+                "governance_status": recommendation_record.governance_status,
+                "source_recommendation_id": recommendation_record.id,
+            },
+            sort_keys=True,
+        ),
+        task_id=recommendation_record.task_id,
+        source_type=ProposalSourceType.PLANNER_RECOMMENDATION.value,
+        source_id=recommendation_record.id,
+    )
+    proposal = to_proposal(proposal_record)
+
+    await event_service.emit_event(
+        event_type=EventType.PLANNER_RECOMMENDATION_PROMOTED,
+        message=f"Planner recommendation promoted: {recommendation_record.id}",
+        metadata={
+            "recommendation_id": recommendation_record.id,
+            "proposal_id": proposal.id,
+            "task_id": recommendation_record.task_id,
+            "session_id": recommendation_record.session_id,
+            "proposed_tool": proposed_tool,
+        },
+    )
+
+    return PlannerRecommendationPromotionResponse(
+        proposal=proposal,
+        recommendation=to_planner_recommendation(recommendation_record),
+    )
+
+
+@router.post("/runtime/sessions/{session_id}/planner-proposal")
+async def planner_proposal(
+    session_id: str,
+    request: PlannerPreviewRequest,
+) -> PlannerProposalResponse:
+    try:
+        planner_request = planner_request_for_session(session_id, request)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    planner_response = await planner_service.plan(planner_request)
+    proposed_tool = (
+        planner_response.proposed_tool.model_dump(mode="json")
+        if planner_response.proposed_tool is not None
+        else None
+    )
+    proposal_record = await proposal_service.create_proposal_async(
+        title=f"Planner proposal: {planner_request.objective}",
+        body=json.dumps(
+            {
+                "session_id": planner_request.session_id,
+                "task_id": planner_request.task_id,
+                "objective": planner_request.objective,
+                "context": planner_request.context,
+                "proposed_tool": proposed_tool,
+                "planner_rationale": planner_response.rationale,
+                "planner_confidence": planner_response.confidence,
+            },
+            sort_keys=True,
+        ),
+        task_id=planner_request.task_id,
+    )
+    proposal = to_proposal(proposal_record)
+
+    await event_service.emit_event(
+        event_type=EventType.PLANNER_PROPOSAL_CREATED,
+        message=f"Planner proposal created: {proposal.id}",
+        metadata={
+            "proposal_id": proposal.id,
+            "session_id": planner_request.session_id,
+            "task_id": planner_request.task_id,
+            "objective": planner_request.objective,
+            "proposed_tool_id": (
+                planner_response.proposed_tool.id
+                if planner_response.proposed_tool is not None
+                else None
+            ),
+            "proposed_tool_name": (
+                planner_response.proposed_tool.name
+                if planner_response.proposed_tool is not None
+                else None
+            ),
+            "planner_confidence": planner_response.confidence,
+        },
+    )
+
+    return PlannerProposalResponse(
+        proposal=proposal,
+        planner_response=planner_response,
+    )
 
 
 @router.post("/runtime/sessions/{session_id}/work")

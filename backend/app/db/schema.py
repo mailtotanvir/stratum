@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -150,11 +150,27 @@ class ToolInvocationRecord(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class PlannerRecommendationRecord(Base):
+    __tablename__ = "planner_recommendations"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    task_id: Mapped[str] = mapped_column(Text, index=True)
+    session_id: Mapped[str] = mapped_column(Text, index=True)
+    objective: Mapped[str] = mapped_column(Text)
+    proposed_tool_json: Mapped[str | None] = mapped_column(Text)
+    rationale: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float)
+    governance_status: Mapped[str] = mapped_column(Text, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class ProposalRecord(Base):
     __tablename__ = "proposals"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     task_id: Mapped[str | None] = mapped_column(Text, index=True)
+    source_type: Mapped[str] = mapped_column(Text, index=True)
+    source_id: Mapped[str | None] = mapped_column(Text, index=True)
     title: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, index=True)

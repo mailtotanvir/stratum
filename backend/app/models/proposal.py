@@ -9,6 +9,11 @@ class ProposalStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class ProposalSourceType(StrEnum):
+    MANUAL = "manual"
+    PLANNER_RECOMMENDATION = "planner_recommendation"
+
+
 class ProposalDecision(StrEnum):
     APPROVE = "approve"
     REJECT = "reject"
@@ -27,6 +32,8 @@ class ProposalRespond(BaseModel):
 class Proposal(BaseModel):
     id: str
     task_id: str | None = None
+    source_type: ProposalSourceType = ProposalSourceType.MANUAL
+    source_id: str | None = None
     title: str
     body: str
     status: ProposalStatus
@@ -36,4 +43,3 @@ class Proposal(BaseModel):
 
     def to_dict(self) -> dict[str, object]:
         return self.model_dump(mode="json")
-

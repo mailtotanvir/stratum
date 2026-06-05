@@ -1,12 +1,16 @@
 from typing import Any
 
-from app.models.proposal import ProposalStatus
+from app.models.proposal import ProposalSourceType, ProposalStatus
 from app.models.runtime_event import EventType, Severity
 from app.models.task import TaskStatus
 from app.services.event_service import EventService, event_service
 from app.services.governance_service import (
     GovernanceService,
     classify_governance_status,
+)
+from app.services.planner_recommendation_service import (
+    PlannerRecommendationService,
+    planner_recommendation_service,
 )
 from app.services.proposal_service import ProposalService, proposal_service
 from app.services.reconstruction_service import ReconstructionService
@@ -39,17 +43,20 @@ class DiagnosticsService:
         events: EventService | None = None,
         tasks: TaskService | None = None,
         proposals: ProposalService | None = None,
+        recommendations: PlannerRecommendationService | None = None,
         reconstruction: ReconstructionService | None = None,
         governance: GovernanceService | None = None,
     ) -> None:
         self._events = events or event_service
         self._tasks = tasks or task_service
         self._proposals = proposals or proposal_service
+        self._recommendations = recommendations or planner_recommendation_service
         self._governance = governance or GovernanceService(self._events)
         self._reconstruction = reconstruction or ReconstructionService(
             events=self._events,
             tasks=self._tasks,
             proposals=self._proposals,
+            recommendations=self._recommendations,
         )
 
     def event_store_health(self) -> dict[str, Any]:
@@ -100,9 +107,25 @@ class DiagnosticsService:
             ProposalStatus.APPROVED.value: 0,
             ProposalStatus.REJECTED.value: 0,
         }
+        source_type_counts = {
+            source_type.value: 0 for source_type in ProposalSourceType
+        }
+        sources: list[dict[str, str | None]] = []
         for proposal in proposals:
             if proposal.status in status_counts:
                 status_counts[proposal.status] += 1
+            source_type = proposal.source_type or ProposalSourceType.MANUAL.value
+            source_type_counts[source_type] = (
+                source_type_counts.get(source_type, 0) + 1
+            )
+            source = {
+                "proposal_id": proposal.id,
+                "source_type": source_type,
+                "source_id": proposal.source_id,
+            }
+            if source_type == ProposalSourceType.PLANNER_RECOMMENDATION.value:
+                source["recommendation_id"] = proposal.source_id
+            sources.append(source)
 
         proposal_events = [
             event
@@ -112,11 +135,22 @@ class DiagnosticsService:
         event_counts = {
             event_type: 0 for event_type in PROPOSAL_LIFECYCLE_TYPES
         }
+        event_source_type_counts = {
+            source_type.value: 0 for source_type in ProposalSourceType
+        }
         missing_proposal_id_count = 0
         missing_proposal_id_by_type: dict[str, int] = {}
 
         for event in proposal_events:
             event_counts[event.type.value] += 1
+            event_source_type = event.metadata.get(
+                "source_type",
+                ProposalSourceType.MANUAL.value,
+            )
+            if isinstance(event_source_type, str):
+                event_source_type_counts[event_source_type] = (
+                    event_source_type_counts.get(event_source_type, 0) + 1
+                )
             if not isinstance(event.metadata.get("proposal_id"), str):
                 missing_proposal_id_count += 1
                 missing_proposal_id_by_type[event.type.value] = (
@@ -128,7 +162,10 @@ class DiagnosticsService:
         return {
             "total_proposals": len(proposals),
             "status_counts": status_counts,
+            "source_type_counts": source_type_counts,
+            "sources": sources,
             "event_counts": event_counts,
+            "event_source_type_counts": event_source_type_counts,
             "unresolved_count": status_counts[ProposalStatus.PROPOSED.value],
             "missing_proposal_id_count": missing_proposal_id_count,
             "missing_proposal_id_by_type": missing_proposal_id_by_type,
@@ -166,10 +203,44 @@ class DiagnosticsService:
             "total_governance_events": len(events),
         }
 
+    def planner_recommendation_health(self) -> dict[str, Any]:
+        records = self._recommendations.list_recommendations()
+        reconstructed = self._reconstruction.get_reconstructed_recommendations()
+        reconstructed_by_id = {
+            recommendation["recommendation_id"]: recommendation
+            for recommendation in reconstructed
+        }
+        governance_status_counts: dict[str, int] = {}
+        by_session_id: dict[str, list[str]] = {}
+
+        for record in records:
+            governance_status_counts[record.governance_status] = (
+                governance_status_counts.get(record.governance_status, 0) + 1
+            )
+            by_session_id.setdefault(record.session_id, []).append(record.id)
+
+        promoted_count = sum(
+            1
+            for record in records
+            if reconstructed_by_id.get(record.id, {}).get("promoted") is True
+        )
+        unpromoted_count = len(records) - promoted_count
+        consistency = self._reconstruction.recommendation_consistency_health()
+
+        return {
+            "total_recommendations": len(records),
+            "governance_status_counts": governance_status_counts,
+            "promoted_count": promoted_count,
+            "unpromoted_count": unpromoted_count,
+            "by_session_id": by_session_id,
+            "consistency": consistency,
+        }
+
     def runtime_summary(self) -> dict[str, Any]:
         event_health = self.event_store_health()
         task_health = self._task_health()
         proposal_health = self.proposal_health()
+        recommendation_health = self.planner_recommendation_health()
         governance_health = self.governance_health()
         task_consistency = self._reconstruction.task_consistency_health()
         proposal_consistency = self._reconstruction.proposal_consistency_health()
@@ -188,8 +259,20 @@ class DiagnosticsService:
             "proposals": {
                 "total_proposals": proposal_health["total_proposals"],
                 "status_counts": proposal_health["status_counts"],
+                "source_type_counts": proposal_health["source_type_counts"],
                 "unresolved_count": proposal_health["unresolved_count"],
                 "inconsistent": proposal_consistency["inconsistent"],
+            },
+            "planner_recommendations": {
+                "planner_recommendation_count": recommendation_health[
+                    "total_recommendations"
+                ],
+                "planner_recommendation_promoted_count": recommendation_health[
+                    "promoted_count"
+                ],
+                "planner_recommendation_unpromoted_count": recommendation_health[
+                    "unpromoted_count"
+                ],
             },
             "integrity": {
                 "missing_task_id_count": event_health["missing_task_id_count"],

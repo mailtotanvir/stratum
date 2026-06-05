@@ -53,3 +53,22 @@ def compare_proposal(proposal_id: str) -> dict[str, Any]:
         return reconstruction_service.compare_proposal_record_to_events(proposal_id)
     except ProposalNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/reconstruct/planner-recommendations")
+def reconstruct_planner_recommendations(
+    session_id: str | None = None,
+) -> list[dict[str, Any]]:
+    return reconstruction_service.get_reconstructed_recommendations(
+        session_id=session_id
+    )
+
+
+@router.get("/reconstruct/planner-recommendations/consistency")
+def planner_recommendation_consistency() -> dict[str, Any]:
+    return reconstruction_service.recommendation_consistency_health()
+
+
+@router.get("/reconstruct/planner-recommendations/{recommendation_id}")
+def planner_recommendation_lineage(recommendation_id: str) -> dict[str, Any]:
+    return reconstruction_service.get_recommendation_lineage(recommendation_id)

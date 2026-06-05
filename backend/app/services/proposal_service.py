@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.schema import Base, ProposalRecord
 from app.db.session import create_session_factory, create_sqlite_engine
-from app.models.proposal import ProposalDecision, ProposalStatus
+from app.models.proposal import ProposalDecision, ProposalSourceType, ProposalStatus
 from app.models.runtime_event import EventType, Severity
 from app.services.event_service import EventService, event_service
 
@@ -43,15 +43,71 @@ class ProposalService:
             self._session_factory = create_session_factory(self._engine)
         return self._session_factory
 
+    def set_db_path(self, db_path: Path | None) -> None:
+        self._db_path = db_path
+        self._engine = None
+        self._session_factory = None
+
     def create_proposal(
         self,
         title: str,
         body: str,
         task_id: str | None = None,
+        source_type: str = ProposalSourceType.MANUAL.value,
+        source_id: str | None = None,
     ) -> ProposalRecord:
+        record = self._create_proposal_record(
+            title=title,
+            body=body,
+            task_id=task_id,
+            source_type=source_type,
+            source_id=source_id,
+        )
+
+        self._emit_event(
+            EventType.PROPOSAL_GENERATED,
+            record,
+            message=f"Proposal generated: {record.title}",
+        )
+        return record
+
+    async def create_proposal_async(
+        self,
+        title: str,
+        body: str,
+        task_id: str | None = None,
+        source_type: str = ProposalSourceType.MANUAL.value,
+        source_id: str | None = None,
+    ) -> ProposalRecord:
+        record = self._create_proposal_record(
+            title=title,
+            body=body,
+            task_id=task_id,
+            source_type=source_type,
+            source_id=source_id,
+        )
+
+        await self._emit_event_async(
+            EventType.PROPOSAL_GENERATED,
+            record,
+            message=f"Proposal generated: {record.title}",
+        )
+        return record
+
+    def _create_proposal_record(
+        self,
+        title: str,
+        body: str,
+        task_id: str | None = None,
+        source_type: str = ProposalSourceType.MANUAL.value,
+        source_id: str | None = None,
+    ) -> ProposalRecord:
+        parsed_source_type = ProposalSourceType(source_type)
         record = ProposalRecord(
             id=str(uuid4()),
             task_id=task_id,
+            source_type=parsed_source_type.value,
+            source_id=source_id,
             title=title,
             body=body,
             status=ProposalStatus.PROPOSED.value,
@@ -66,11 +122,6 @@ class ProposalService:
             session.refresh(record)
             session.expunge(record)
 
-        self._emit_event(
-            EventType.PROPOSAL_GENERATED,
-            record,
-            message=f"Proposal generated: {record.title}",
-        )
         return record
 
     def list_proposals(
@@ -100,6 +151,17 @@ class ProposalService:
             session.expunge(record)
 
         return record
+
+    def get_proposal_source(self, proposal_id: str) -> dict[str, str | None]:
+        record = self.get_proposal(proposal_id)
+        source = {
+            "proposal_id": record.id,
+            "source_type": record.source_type,
+            "source_id": record.source_id,
+        }
+        if record.source_type == ProposalSourceType.PLANNER_RECOMMENDATION.value:
+            source["recommendation_id"] = record.source_id
+        return source
 
     def respond(self, proposal_id: str, decision: str) -> ProposalRecord:
         try:
@@ -143,8 +205,36 @@ class ProposalService:
         message: str,
         severity: Severity = Severity.INFO,
     ) -> None:
+        metadata = self._event_metadata(record)
+
+        self._events.emit_event_sync(
+            event_type=event_type,
+            severity=severity,
+            message=message,
+            metadata=metadata,
+        )
+
+    async def _emit_event_async(
+        self,
+        event_type: EventType,
+        record: ProposalRecord,
+        message: str,
+        severity: Severity = Severity.INFO,
+    ) -> None:
+        metadata = self._event_metadata(record)
+
+        await self._events.emit_event(
+            event_type=event_type,
+            severity=severity,
+            message=message,
+            metadata=metadata,
+        )
+
+    def _event_metadata(self, record: ProposalRecord) -> dict[str, str]:
         metadata = {
             "proposal_id": record.id,
+            "source_type": record.source_type,
+            "source_id": record.source_id,
             "title": record.title,
             "body": record.body,
             "status": record.status,
@@ -157,12 +247,7 @@ class ProposalService:
         if record.decision is not None:
             metadata["decision"] = record.decision
 
-        self._events.emit_event_sync(
-            event_type=event_type,
-            severity=severity,
-            message=message,
-            metadata=metadata,
-        )
+        return metadata
 
 
 proposal_service = ProposalService()

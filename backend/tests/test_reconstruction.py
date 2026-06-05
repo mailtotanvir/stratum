@@ -1,10 +1,16 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from app.db.schema import ProposalRecord, TaskRecord
 from app.main import app
+from app.models.planner import PlannerRequest, PlannerResponse
+from app.models.runtime_event import EventType
 from app.models.task import TaskStatus
+from app.models.tool import Tool
 from app.routes import reconstruct as reconstruct_routes
 from app.services.event_service import EventService
+from app.services.planner_recommendation_service import PlannerRecommendationService
 from app.services.proposal_service import ProposalService
 from app.services.reconstruction_service import ReconstructionService
 from app.services.task_service import TaskService
@@ -227,6 +233,8 @@ def test_reconstruct_single_proposal_from_lifecycle_events(tmp_path) -> None:
         "id": created.id,
         "found": True,
         "task_id": "task-1",
+        "source_type": "manual",
+        "source_id": None,
         "title": "Rebuild proposal",
         "body": "Proposal body",
         "status": "approved",
@@ -258,6 +266,184 @@ def test_reconstruct_multiple_proposals(tmp_path) -> None:
     assert by_id[first.id]["decision"] == "approve"
     assert by_id[second.id]["status"] == "rejected"
     assert by_id[second.id]["decision"] == "reject"
+
+
+def test_reconstruct_planner_recommendation_source_lineage(tmp_path) -> None:
+    trace_store = TraceService(tmp_path / "trace.db")
+    events = EventService(trace_store)
+    proposals = ProposalService(tmp_path / "proposals.db", events=events)
+    service = ReconstructionService(
+        events=EventService(trace_store),
+        proposals=proposals,
+    )
+
+    created = proposals.create_proposal(
+        "Planner proposal",
+        "Body",
+        source_type="planner_recommendation",
+        source_id="recommendation-1",
+    )
+
+    reconstructed = service.reconstruct_proposal_state(created.id)
+
+    assert reconstructed["source_type"] == "planner_recommendation"
+    assert reconstructed["source_id"] == "recommendation-1"
+
+
+def test_reconstruct_legacy_proposal_event_defaults_to_manual_source(
+    tmp_path,
+) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+
+        await events.emit_event(
+            EventType.PROPOSAL_GENERATED,
+            "Legacy proposal",
+            metadata={
+                "proposal_id": "proposal-1",
+                "title": "Legacy proposal",
+                "body": "Body",
+                "status": "proposed",
+                "created_at": "2026-06-05T00:00:00+00:00",
+            },
+        )
+
+        reconstructed = service.reconstruct_proposal_state("proposal-1")
+
+        assert reconstructed["source_type"] == "manual"
+        assert reconstructed["source_id"] is None
+
+    asyncio.run(run_flow())
+
+
+def planner_tool(tool_id: str = "tool-1") -> Tool:
+    return Tool(
+        id=tool_id,
+        name="shell.read",
+        description="Read a file.",
+        enabled=True,
+        created_at="2026-06-05T00:00:00+00:00",
+        updated_at="2026-06-05T00:00:00+00:00",
+        parameters=[],
+    )
+
+
+def test_reconstruct_planner_recommendation_from_event_history(tmp_path) -> None:
+    trace_store = TraceService(tmp_path / "trace.db")
+    events = EventService(trace_store)
+    recommendations = PlannerRecommendationService(
+        tmp_path / "recommendations.db",
+        events=events,
+    )
+    service = ReconstructionService(
+        events=EventService(trace_store),
+        recommendations=recommendations,
+    )
+    request = PlannerRequest(
+        task_id="task-1",
+        session_id="session-1",
+        objective="Inspect README",
+        available_tools=[planner_tool()],
+        context={},
+    )
+    response = PlannerResponse(
+        proposed_tool=planner_tool(),
+        rationale="Selected first enabled tool: shell.read",
+        confidence=0.75,
+    )
+
+    created = recommendations.create_recommendation(
+        request,
+        response,
+        {"governance_status": "ok"},
+    )
+    reconstructed = service.get_recommendation_lineage(created.id)
+
+    assert reconstructed["recommendation_id"] == created.id
+    assert reconstructed["found"] is True
+    assert reconstructed["task_id"] == "task-1"
+    assert reconstructed["session_id"] == "session-1"
+    assert reconstructed["objective"] == "Inspect README"
+    assert reconstructed["proposed_tool"]["name"] == "shell.read"
+    assert reconstructed["rationale"] == "Selected first enabled tool: shell.read"
+    assert reconstructed["confidence"] == 0.75
+    assert reconstructed["governance_status"] == "ok"
+    assert reconstructed["created_at"] == created.created_at.isoformat()
+    assert reconstructed["promoted"] is False
+    assert reconstructed["proposal_id"] is None
+
+
+def test_reconstruct_promoted_planner_recommendation_has_proposal_id(
+    tmp_path,
+) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+
+        await events.emit_event(
+            EventType.PLANNER_RECOMMENDATION_CREATED,
+            "Recommendation created",
+            metadata={
+                "recommendation_id": "recommendation-1",
+                "task_id": "task-1",
+                "session_id": "session-1",
+                "objective": "Inspect README",
+                "proposed_tool": {"name": "shell.read"},
+                "rationale": "Selected first enabled tool: shell.read",
+                "confidence": 0.75,
+                "governance_status": "ok",
+                "created_at": "2026-06-05T00:00:00+00:00",
+            },
+        )
+        await events.emit_event(
+            EventType.PLANNER_RECOMMENDATION_PROMOTED,
+            "Recommendation promoted",
+            metadata={
+                "recommendation_id": "recommendation-1",
+                "proposal_id": "proposal-1",
+                "task_id": "task-1",
+                "session_id": "session-1",
+                "proposed_tool": {"name": "shell.read"},
+            },
+        )
+
+        reconstructed = service.get_recommendation_lineage("recommendation-1")
+
+        assert reconstructed["promoted"] is True
+        assert reconstructed["proposal_id"] == "proposal-1"
+
+    asyncio.run(run_flow())
+
+
+def test_reconstruct_missing_recommendation_promotion_reference(tmp_path) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+
+        await events.emit_event(
+            EventType.PLANNER_RECOMMENDATION_PROMOTED,
+            "Missing recommendation promoted",
+            metadata={
+                "recommendation_id": "missing-recommendation",
+                "proposal_id": "proposal-1",
+                "task_id": "task-1",
+                "session_id": "session-1",
+            },
+        )
+
+        reconstructed = service.get_recommendation_lineage("missing-recommendation")
+        consistency = service.recommendation_consistency_health()
+
+        assert reconstructed["found"] is False
+        assert reconstructed["promoted"] is True
+        assert reconstructed["proposal_id"] == "proposal-1"
+        assert consistency["consistent"] is False
+        assert consistency["missing_promotion_references"] == [
+            "missing-recommendation"
+        ]
+
+    asyncio.run(run_flow())
 
 
 def test_compare_consistent_proposal_record_to_events(tmp_path) -> None:
@@ -379,3 +565,49 @@ def test_proposal_reconstruction_api_endpoints(tmp_path) -> None:
         f"/reconstruct/proposals/{created.id}/compare"
     ).json()
     assert comparison["consistent"] is True
+
+
+def test_planner_recommendation_reconstruction_api_endpoints(tmp_path) -> None:
+    trace_store = TraceService(tmp_path / "trace.db")
+    events = EventService(trace_store)
+    reconstruct_routes.reconstruction_service = ReconstructionService(
+        events=EventService(trace_store),
+    )
+    client = TestClient(app)
+
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_CREATED,
+        "Recommendation created",
+        metadata={
+            "recommendation_id": "recommendation-1",
+            "task_id": "task-1",
+            "session_id": "session-1",
+            "objective": "Inspect README",
+            "proposed_tool": {"name": "shell.read"},
+            "rationale": "Selected first enabled tool: shell.read",
+            "confidence": 0.75,
+            "governance_status": "ok",
+            "created_at": "2026-06-05T00:00:00+00:00",
+        },
+    )
+
+    list_response = client.get("/reconstruct/planner-recommendations")
+    filtered_response = client.get(
+        "/reconstruct/planner-recommendations",
+        params={"session_id": "session-1"},
+    )
+    lineage_response = client.get(
+        "/reconstruct/planner-recommendations/recommendation-1"
+    )
+    consistency_response = client.get(
+        "/reconstruct/planner-recommendations/consistency"
+    )
+
+    assert list_response.status_code == 200
+    assert filtered_response.status_code == 200
+    assert lineage_response.status_code == 200
+    assert consistency_response.status_code == 200
+    assert list_response.json()[0]["recommendation_id"] == "recommendation-1"
+    assert filtered_response.json()[0]["session_id"] == "session-1"
+    assert lineage_response.json()["objective"] == "Inspect README"
+    assert consistency_response.json()["consistent"] is True
