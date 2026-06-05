@@ -14,6 +14,7 @@ from app.services.runtime_execution_service import (
     RuntimeExecutionNotFoundError,
     RuntimeExecutionService,
 )
+from app.services.runtime_session_service import RuntimeSessionService
 from app.services.stop_service import StopService, stop_service
 from app.services.trace_service import TraceService
 
@@ -38,6 +39,11 @@ def stops(tmp_path) -> StopService:
     return StopService(tmp_path / "stops.db")
 
 
+@pytest.fixture
+def sessions(tmp_path) -> RuntimeSessionService:
+    return RuntimeSessionService(tmp_path / "runtime_sessions.db")
+
+
 def test_python_async_runtime_preserves_agent_runtime_shape(events) -> None:
     runtime = PythonAsyncRuntime(events=events)
 
@@ -51,8 +57,12 @@ def test_python_async_runtime_preserves_agent_runtime_shape(events) -> None:
 
 
 @pytest.mark.anyio
-async def test_runtime_run_emits_event(events, executions) -> None:
-    runtime = PythonAsyncRuntime(events=events, executions=executions)
+async def test_runtime_run_emits_event(events, executions, sessions) -> None:
+    runtime = PythonAsyncRuntime(
+        events=events,
+        executions=executions,
+        sessions=sessions,
+    )
 
     response = await runtime.run_task("task-123")
     emitted = await events.list_events()
@@ -66,7 +76,7 @@ async def test_runtime_run_emits_event(events, executions) -> None:
         },
     }
 
-    event = emitted[0]
+    event = emitted[-1]
     assert event.type == EventType.RUNTIME_TASK_STARTED
     assert event.severity == Severity.INFO
     assert event.metadata == {
@@ -74,7 +84,11 @@ async def test_runtime_run_emits_event(events, executions) -> None:
         "runtime": "python_async",
     }
 
-    assert emitted == [event]
+    assert [event.type for event in emitted] == [
+        EventType.RUNTIME_SESSION_CREATED,
+        EventType.RUNTIME_SESSION_RUNNING,
+        EventType.RUNTIME_TASK_STARTED,
+    ]
 
 
 @pytest.mark.anyio
@@ -129,11 +143,21 @@ async def test_governance_warn_emits_warning_and_still_starts(
         },
     }
     assert execution.state == "running"
-    assert [event.type for event in emitted[-2:]] == [
-        EventType.RUNTIME_GOVERNANCE_WARNING,
+    assert EventType.RUNTIME_GOVERNANCE_WARNING in [
+        event.type
+        for event in emitted
+    ]
+    assert [event.type for event in emitted[-3:]] == [
+        EventType.RUNTIME_SESSION_CREATED,
+        EventType.RUNTIME_SESSION_RUNNING,
         EventType.RUNTIME_TASK_STARTED,
     ]
-    assert emitted[-2].metadata == {
+    warning = next(
+        event
+        for event in emitted
+        if event.type == EventType.RUNTIME_GOVERNANCE_WARNING
+    )
+    assert warning.metadata == {
         "task_id": "task-123",
         "decision": "warn",
         "reasons": ["governance_degraded"],
@@ -352,12 +376,18 @@ def test_runtime_events_appear_in_trace_filtered_by_task_id() -> None:
 
     events = trace_response.json()
     assert [event["type"] for event in events] == [
+        "runtime_session_created",
+        "runtime_session_running",
         "runtime_task_started",
         "stop_requested",
         "stop_applied",
+        "runtime_session_stopped",
         "runtime_task_stopped",
     ]
     assert [event["metadata"]["task_id"] for event in events] == [
+        "task-123",
+        "task-123",
+        "task-123",
         "task-123",
         "task-123",
         "task-123",
@@ -386,6 +416,8 @@ def test_governance_events_appear_in_trace_filtered_by_task_id() -> None:
     assert [event["type"] for event in events] == [
         "reflection_requested",
         "runtime_governance_warning",
+        "runtime_session_created",
+        "runtime_session_running",
         "runtime_task_started",
     ]
     assert events[0]["metadata"]["task_id"] == "task-123"

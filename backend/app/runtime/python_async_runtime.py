@@ -7,6 +7,10 @@ from app.services.runtime_execution_service import (
     RuntimeExecutionService,
     runtime_execution_service,
 )
+from app.services.runtime_session_service import (
+    RuntimeSessionService,
+    runtime_session_service,
+)
 from app.services.stop_service import StopService, stop_service
 
 
@@ -19,6 +23,7 @@ class PythonAsyncRuntime:
         reflections: ReflectionService | None = None,
         interrupts: InterruptService | None = None,
         stops: StopService | None = None,
+        sessions: RuntimeSessionService | None = None,
     ) -> None:
         self._events = events or event_service
         self._executions = executions or runtime_execution_service
@@ -26,6 +31,7 @@ class PythonAsyncRuntime:
         self._reflections = reflections or reflection_service
         self._interrupts = interrupts or interrupt_service
         self._stops = stops or stop_service
+        self._sessions = sessions or runtime_session_service
 
     async def run_task(self, task_id: str) -> dict:
         governance = self._governance_preview()
@@ -76,6 +82,18 @@ class PythonAsyncRuntime:
                 },
             )
 
+        session = self._sessions.create_session(task_id)
+        await self._emit_session_event(
+            EventType.RUNTIME_SESSION_CREATED,
+            session,
+            message=f"Runtime session created for task: {task_id}",
+        )
+        session = self._sessions.mark_running(session.id)
+        await self._emit_session_event(
+            EventType.RUNTIME_SESSION_RUNNING,
+            session,
+            message=f"Runtime session running for task: {task_id}",
+        )
         self._executions.start(task_id)
         await self._events.emit_event(
             event_type=EventType.RUNTIME_TASK_STARTED,
@@ -107,6 +125,14 @@ class PythonAsyncRuntime:
         )
 
         self._executions.interrupt(task_id)
+        session = self._sessions.latest_session_for_task(task_id)
+        if session is not None:
+            session = self._sessions.mark_interrupted(session.id)
+            await self._emit_session_event(
+                EventType.RUNTIME_SESSION_INTERRUPTED,
+                session,
+                message=f"Runtime session interrupted for task: {task_id}",
+            )
         await self._events.emit_event(
             event_type=EventType.RUNTIME_TASK_INTERRUPTED,
             message=f"Runtime task interrupted: {task_id}",
@@ -160,6 +186,14 @@ class PythonAsyncRuntime:
         )
 
         self._executions.stop(task_id)
+        session = self._sessions.latest_session_for_task(task_id)
+        if session is not None:
+            session = self._sessions.mark_stopped(session.id)
+            await self._emit_session_event(
+                EventType.RUNTIME_SESSION_STOPPED,
+                session,
+                message=f"Runtime session stopped for task: {task_id}",
+            )
         await self._events.emit_event(
             event_type=EventType.RUNTIME_TASK_STOPPED,
             message=f"Runtime task stopped: {task_id}",
@@ -189,6 +223,22 @@ class PythonAsyncRuntime:
         if request.resolved_at is not None:
             metadata["resolved_at"] = request.resolved_at.isoformat()
         return metadata
+
+    async def _emit_session_event(self, event_type, session, message: str) -> None:
+        metadata = {
+            "runtime_session_id": session.id,
+            "task_id": session.task_id,
+            "status": session.status,
+            "created_at": session.created_at.isoformat(),
+        }
+        if session.completed_at is not None:
+            metadata["completed_at"] = session.completed_at.isoformat()
+
+        await self._events.emit_event(
+            event_type=event_type,
+            message=message,
+            metadata=metadata,
+        )
 
 
 python_async_runtime = PythonAsyncRuntime()
