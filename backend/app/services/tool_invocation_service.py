@@ -60,6 +60,25 @@ class ToolInvocationService:
         tool_id: str,
         input_payload: dict[str, Any] | None = None,
     ) -> ToolInvocationRecord:
+        record = self.create_invocation_without_event(
+            session_id=session_id,
+            tool_id=tool_id,
+            input_payload=input_payload,
+        )
+
+        self._emit_event(
+            EventType.TOOL_INVOCATION_REQUESTED,
+            record,
+            message=f"Tool invocation requested: {tool_id}",
+        )
+        return record
+
+    def create_invocation_without_event(
+        self,
+        session_id: str,
+        tool_id: str,
+        input_payload: dict[str, Any] | None = None,
+    ) -> ToolInvocationRecord:
         self._sessions.get_session(session_id)
         self._tools.get_tool(tool_id)
         record = ToolInvocationRecord(
@@ -79,11 +98,6 @@ class ToolInvocationService:
             session.refresh(record)
             session.expunge(record)
 
-        self._emit_event(
-            EventType.TOOL_INVOCATION_REQUESTED,
-            record,
-            message=f"Tool invocation requested: {tool_id}",
-        )
         return record
 
     def mark_running(self, invocation_id: str) -> ToolInvocationRecord:
@@ -94,6 +108,9 @@ class ToolInvocationService:
             message=f"Tool invocation running: {record.tool_id}",
         )
         return record
+
+    def mark_running_without_event(self, invocation_id: str) -> ToolInvocationRecord:
+        return self._mark(invocation_id, ToolInvocationStatus.RUNNING)
 
     def mark_completed(
         self,

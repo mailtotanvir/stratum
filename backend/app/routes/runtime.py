@@ -11,6 +11,7 @@ from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskAr
 from app.models.runtime_execution import RuntimeExecution
 from app.models.runtime_session import RuntimeSession
 from app.runtime.python_async_runtime import python_async_runtime
+from app.runtime.work_loop import work_loop_service
 from app.services.artifact_service import ArtifactNotFoundError, artifact_service
 from app.services.runtime_artifact_service import (
     RuntimeArtifactAlreadyAttachedError,
@@ -25,12 +26,19 @@ from app.services.runtime_session_service import (
     RuntimeSessionNotFoundError,
     runtime_session_service,
 )
+from app.services.tool_execution_service import ToolDisabledError
+from app.services.tool_registry_service import ToolNotFoundError
 
 router = APIRouter()
 
 
 class RuntimeReasonRequest(BaseModel):
     reason: str
+
+
+class RuntimeWorkRequest(BaseModel):
+    tool_name: str
+    input_payload: dict | None = None
 
 
 def to_runtime_execution(record: RuntimeExecutionRecord) -> RuntimeExecution:
@@ -108,6 +116,25 @@ def get_runtime_session(session_id: str) -> RuntimeSession:
         return to_runtime_session(runtime_session_service.get_session(session_id))
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/runtime/sessions/{session_id}/work")
+async def run_runtime_work(
+    session_id: str,
+    request: RuntimeWorkRequest,
+) -> dict:
+    try:
+        return await work_loop_service.run_single_step(
+            session_id=session_id,
+            tool_name=request.tool_name,
+            input_payload=request.input_payload,
+        )
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ToolNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ToolDisabledError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/runtime/tasks")
