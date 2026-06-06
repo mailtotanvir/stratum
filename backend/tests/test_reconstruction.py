@@ -14,6 +14,7 @@ from app.services.planner_recommendation_service import PlannerRecommendationSer
 from app.services.proposal_service import ProposalService
 from app.services.reconstruction_service import ReconstructionService
 from app.services.task_service import TaskService
+from app.services.tool_invocation_service import ToolInvocationService
 from app.services.trace_service import TraceService
 
 
@@ -235,6 +236,7 @@ def test_reconstruct_single_proposal_from_lifecycle_events(tmp_path) -> None:
         "task_id": "task-1",
         "source_type": "manual",
         "source_id": None,
+        "source_context_snapshot": None,
         "title": "Rebuild proposal",
         "body": "Proposal body",
         "status": "approved",
@@ -282,12 +284,22 @@ def test_reconstruct_planner_recommendation_source_lineage(tmp_path) -> None:
         "Body",
         source_type="planner_recommendation",
         source_id="recommendation-1",
+        source_context_snapshot={
+            "schema_version": 1,
+            "active_proposal_count": 1,
+            "available_tool_count": 2,
+        },
     )
 
     reconstructed = service.reconstruct_proposal_state(created.id)
 
     assert reconstructed["source_type"] == "planner_recommendation"
     assert reconstructed["source_id"] == "recommendation-1"
+    assert reconstructed["source_context_snapshot"] == {
+        "schema_version": 1,
+        "active_proposal_count": 1,
+        "available_tool_count": 2,
+    }
 
 
 def test_reconstruct_legacy_proposal_event_defaults_to_manual_source(
@@ -313,6 +325,7 @@ def test_reconstruct_legacy_proposal_event_defaults_to_manual_source(
 
         assert reconstructed["source_type"] == "manual"
         assert reconstructed["source_id"] is None
+        assert reconstructed["source_context_snapshot"] is None
 
     asyncio.run(run_flow())
 
@@ -357,6 +370,14 @@ def test_reconstruct_planner_recommendation_from_event_history(tmp_path) -> None
         request,
         response,
         {"governance_status": "ok"},
+        context_snapshot={
+            "schema_version": 1,
+            "active_proposal_count": 1,
+            "active_recommendation_count": 0,
+            "available_tool_count": 1,
+            "recent_event_count": 4,
+            "diagnostics_summary": {"governance_status": "ok"},
+        },
     )
     reconstructed = service.get_recommendation_lineage(created.id)
 
@@ -369,9 +390,52 @@ def test_reconstruct_planner_recommendation_from_event_history(tmp_path) -> None
     assert reconstructed["rationale"] == "Selected first enabled tool: shell.read"
     assert reconstructed["confidence"] == 0.75
     assert reconstructed["governance_status"] == "ok"
+    assert reconstructed["status"] == "active"
+    assert reconstructed["context_snapshot"] == {
+        "schema_version": 1,
+        "active_proposal_count": 1,
+        "active_recommendation_count": 0,
+        "available_tool_count": 1,
+        "recent_event_count": 4,
+        "diagnostics_summary": {"governance_status": "ok"},
+    }
     assert reconstructed["created_at"] == created.created_at.isoformat()
     assert reconstructed["promoted"] is False
     assert reconstructed["proposal_id"] is None
+
+
+def test_reconstruct_legacy_recommendation_without_context_snapshot(
+    tmp_path,
+) -> None:
+    events = EventService(TraceService(tmp_path / "trace.db"))
+    recommendations = PlannerRecommendationService(
+        tmp_path / "recommendations.db",
+        events=events,
+    )
+    service = ReconstructionService(
+        events=EventService(TraceService(tmp_path / "trace.db")),
+        recommendations=recommendations,
+    )
+
+    created = recommendations.create_recommendation(
+        PlannerRequest(
+            task_id="legacy-task",
+            session_id="legacy-session",
+            objective="Legacy recommendation",
+            available_tools=[planner_tool()],
+            context={},
+        ),
+        PlannerResponse(
+            proposed_tool=planner_tool(),
+            rationale="Legacy rationale",
+            confidence=0.5,
+        ),
+        {"governance_status": "ok"},
+    )
+
+    assert recommendations.context_snapshot_for(created) is None
+    assert service.get_recommendation_lineage(created.id)["context_snapshot"] is None
+    assert service.get_recommendation_lineage(created.id)["status"] == "active"
 
 
 def test_reconstruct_promoted_planner_recommendation_has_proposal_id(
@@ -411,9 +475,239 @@ def test_reconstruct_promoted_planner_recommendation_has_proposal_id(
         reconstructed = service.get_recommendation_lineage("recommendation-1")
 
         assert reconstructed["promoted"] is True
+        assert reconstructed["status"] == "promoted"
         assert reconstructed["proposal_id"] == "proposal-1"
 
     asyncio.run(run_flow())
+
+
+def test_reconstruct_dismissed_planner_recommendation(tmp_path) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+        await events.emit_event(
+            EventType.PLANNER_RECOMMENDATION_CREATED,
+            "Recommendation created",
+            metadata={
+                "recommendation_id": "recommendation-1",
+                "task_id": "task-1",
+                "session_id": "session-1",
+            },
+        )
+        await events.emit_event(
+            EventType.PLANNER_RECOMMENDATION_DISMISSED,
+            "Recommendation dismissed",
+            metadata={
+                "recommendation_id": "recommendation-1",
+                "task_id": "task-1",
+                "session_id": "session-1",
+                "status": "dismissed",
+            },
+        )
+
+        reconstructed = service.get_recommendation_lineage("recommendation-1")
+
+        assert reconstructed["status"] == "dismissed"
+        assert reconstructed["promoted"] is False
+
+    asyncio.run(run_flow())
+
+
+def test_recommendation_replay_detects_dismissed_then_promoted(tmp_path) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+        await _emit_recommendation_created(events)
+        dismissed = await _emit_recommendation_dismissed(events)
+        promoted = await _emit_recommendation_promoted(events)
+
+        reconstructed = service.get_recommendation_lineage("recommendation-1")
+        health = service.recommendation_consistency_health()
+
+        assert reconstructed["status"] == "promoted"
+        assert reconstructed["dismissed_at"] == dismissed.ts
+        assert reconstructed["promoted_at"] == promoted.ts
+        assert reconstructed["terminal_status_reason"] == (
+            "promoted_after_dismissed"
+        )
+        assert health["invalid_recommendation_status_transition_count"] == 1
+        assert health["missing_recommendation_lifecycle_reference_count"] == 0
+        assert health["duplicate_recommendation_terminal_event_count"] == 0
+        assert health["consistent"] is False
+
+    asyncio.run(run_flow())
+
+
+def test_recommendation_replay_detects_promoted_then_dismissed(tmp_path) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+        await _emit_recommendation_created(events)
+        promoted = await _emit_recommendation_promoted(events)
+        dismissed = await _emit_recommendation_dismissed(events)
+
+        reconstructed = service.get_recommendation_lineage("recommendation-1")
+        health = service.recommendation_consistency_health()
+
+        assert reconstructed["status"] == "dismissed"
+        assert reconstructed["promoted_at"] == promoted.ts
+        assert reconstructed["dismissed_at"] == dismissed.ts
+        assert reconstructed["terminal_status_reason"] == (
+            "dismissed_after_promoted"
+        )
+        assert health["invalid_recommendation_status_transition_count"] == 1
+
+    asyncio.run(run_flow())
+
+
+def test_recommendation_replay_detects_missing_lifecycle_references(
+    tmp_path,
+) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+        await _emit_recommendation_promoted(
+            events,
+            recommendation_id="missing-promotion",
+        )
+        await _emit_recommendation_dismissed(
+            events,
+            recommendation_id="missing-dismissal",
+        )
+
+        health = service.recommendation_consistency_health()
+
+        assert health["missing_recommendation_lifecycle_reference_count"] == 2
+        assert health["missing_promotion_references"] == ["missing-promotion"]
+        assert health["missing_dismissal_references"] == ["missing-dismissal"]
+
+    asyncio.run(run_flow())
+
+
+def test_recommendation_replay_detects_duplicate_dismissal(tmp_path) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+        await _emit_recommendation_created(events)
+        first = await _emit_recommendation_dismissed(events)
+        await _emit_recommendation_dismissed(events)
+
+        reconstructed = service.get_recommendation_lineage("recommendation-1")
+        health = service.recommendation_consistency_health()
+
+        assert reconstructed["dismissed_at"] == first.ts
+        assert reconstructed["terminal_status_reason"] == "duplicate_dismissal"
+        assert health["duplicate_recommendation_terminal_event_count"] == 1
+        assert health["consistent"] is False
+
+    asyncio.run(run_flow())
+
+
+def test_recommendation_replay_allows_duplicate_promotion(tmp_path) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        service = ReconstructionService(events=events)
+        await _emit_recommendation_created(events)
+        first = await _emit_recommendation_promoted(events, proposal_id="proposal-1")
+        await _emit_recommendation_promoted(events, proposal_id="proposal-2")
+
+        reconstructed = service.get_recommendation_lineage("recommendation-1")
+        health = service.recommendation_consistency_health()
+
+        assert reconstructed["status"] == "promoted"
+        assert reconstructed["promoted_at"] == first.ts
+        assert reconstructed["proposal_id"] == "proposal-2"
+        assert health["duplicate_recommendation_terminal_event_count"] == 0
+        assert health["consistent"] is True
+
+    asyncio.run(run_flow())
+
+
+def test_valid_recommendation_terminal_histories_remain_clean(tmp_path) -> None:
+    async def run_flow() -> None:
+        promoted_events = EventService(TraceService(tmp_path / "promoted.db"))
+        await _emit_recommendation_created(promoted_events)
+        await _emit_recommendation_promoted(promoted_events)
+        promoted_health = ReconstructionService(
+            events=promoted_events
+        ).recommendation_consistency_health()
+
+        dismissed_events = EventService(TraceService(tmp_path / "dismissed.db"))
+        await _emit_recommendation_created(dismissed_events)
+        await _emit_recommendation_dismissed(dismissed_events)
+        dismissed_health = ReconstructionService(
+            events=dismissed_events
+        ).recommendation_consistency_health()
+
+        assert promoted_health["consistent"] is True
+        assert dismissed_health["consistent"] is True
+
+    asyncio.run(run_flow())
+
+
+def test_recommendation_reconstruction_has_no_runtime_side_effects(tmp_path) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "trace.db"))
+        proposals = ProposalService(tmp_path / "proposals.db", events=events)
+        invocations = ToolInvocationService(tmp_path / "invocations.db")
+        service = ReconstructionService(events=events, proposals=proposals)
+        await _emit_recommendation_created(events)
+        await _emit_recommendation_dismissed(events)
+
+        service.recommendation_consistency_health()
+
+        assert proposals.list_proposals() == []
+        assert invocations.list_invocations() == []
+
+    asyncio.run(run_flow())
+
+
+async def _emit_recommendation_created(
+    events: EventService,
+    recommendation_id: str = "recommendation-1",
+):
+    return await events.emit_event(
+        EventType.PLANNER_RECOMMENDATION_CREATED,
+        "Recommendation created",
+        metadata={
+            "recommendation_id": recommendation_id,
+            "task_id": "task-1",
+            "session_id": "session-1",
+            "status": "active",
+        },
+    )
+
+
+async def _emit_recommendation_promoted(
+    events: EventService,
+    recommendation_id: str = "recommendation-1",
+    proposal_id: str = "proposal-1",
+):
+    return await events.emit_event(
+        EventType.PLANNER_RECOMMENDATION_PROMOTED,
+        "Recommendation promoted",
+        metadata={
+            "recommendation_id": recommendation_id,
+            "proposal_id": proposal_id,
+            "task_id": "task-1",
+            "session_id": "session-1",
+        },
+    )
+
+
+async def _emit_recommendation_dismissed(
+    events: EventService,
+    recommendation_id: str = "recommendation-1",
+):
+    return await events.emit_event(
+        EventType.PLANNER_RECOMMENDATION_DISMISSED,
+        "Recommendation dismissed",
+        metadata={
+            "recommendation_id": recommendation_id,
+            "task_id": "task-1",
+            "session_id": "session-1",
+        },
+    )
 
 
 def test_reconstruct_missing_recommendation_promotion_reference(tmp_path) -> None:

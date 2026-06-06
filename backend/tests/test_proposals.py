@@ -25,6 +25,7 @@ def test_create_proposal_persists(tmp_path) -> None:
     assert persisted.task_id == "task-1"
     assert persisted.source_type == "manual"
     assert persisted.source_id is None
+    assert service.source_context_snapshot_for(persisted) is None
     assert persisted.status == "proposed"
     assert persisted.resolved_at is None
     assert persisted.decision is None
@@ -77,11 +78,13 @@ def test_get_proposal_source_returns_lineage(tmp_path) -> None:
         "proposal_id": manual.id,
         "source_type": "manual",
         "source_id": None,
+        "source_context_snapshot": None,
     }
     assert service.get_proposal_source(planner.id) == {
         "proposal_id": planner.id,
         "source_type": "planner_recommendation",
         "source_id": "recommendation-1",
+        "source_context_snapshot": None,
         "recommendation_id": "recommendation-1",
     }
 
@@ -136,8 +139,10 @@ def test_proposal_lifecycle_events_appear_in_trace(tmp_path) -> None:
     assert persisted[-1]["metadata"]["status"] == "approved"
     assert persisted[-2]["metadata"]["source_type"] == "manual"
     assert persisted[-2]["metadata"]["source_id"] is None
+    assert persisted[-2]["metadata"]["has_source_context_snapshot"] is False
     assert persisted[-1]["metadata"]["source_type"] == "manual"
     assert persisted[-1]["metadata"]["source_id"] is None
+    assert persisted[-1]["metadata"]["has_source_context_snapshot"] is False
 
 
 def test_double_response_rejected(tmp_path) -> None:

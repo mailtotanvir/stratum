@@ -269,6 +269,10 @@ def test_proposal_diagnostics_empty(tmp_path) -> None:
             "manual": 0,
             "planner_recommendation": 0,
         },
+        "proposals_with_source_context_snapshot": 0,
+        "proposals_missing_source_context_snapshot": 0,
+        "proposal_source_context_snapshot_version_counts": {},
+        "proposals_with_legacy_or_unknown_source_context_snapshot": 0,
         "sources": [],
         "event_counts": {
             "proposal_generated": 0,
@@ -359,18 +363,45 @@ def test_proposal_diagnostics_includes_source_lineage(tmp_path) -> None:
         source_type="planner_recommendation",
         source_id="recommendation-1",
     )
+    planner_with_snapshot = proposals.create_proposal(
+        "Planner with snapshot",
+        "Body",
+        source_type="planner_recommendation",
+        source_id="recommendation-2",
+        source_context_snapshot={
+            "schema_version": 1,
+            "available_tool_count": 1,
+        },
+    )
+    planner_with_legacy_snapshot = proposals.create_proposal(
+        "Planner with legacy snapshot",
+        "Body",
+        source_type="planner_recommendation",
+        source_id="recommendation-3",
+        source_context_snapshot={"available_tool_count": 1},
+    )
 
     health = service.proposal_health()
     sources = {source["proposal_id"]: source for source in health["sources"]}
 
     assert health["source_type_counts"] == {
         "manual": 1,
-        "planner_recommendation": 1,
+        "planner_recommendation": 3,
     }
     assert health["event_source_type_counts"] == {
         "manual": 1,
-        "planner_recommendation": 1,
+        "planner_recommendation": 3,
     }
+    assert health["proposals_with_source_context_snapshot"] == 2
+    assert health["proposals_missing_source_context_snapshot"] == 1
+    assert health["proposal_source_context_snapshot_version_counts"] == {
+        "1": 1,
+        "legacy_or_unknown": 1,
+    }
+    assert (
+        health["proposals_with_legacy_or_unknown_source_context_snapshot"]
+        == 1
+    )
     assert sources[manual.id] == {
         "proposal_id": manual.id,
         "source_type": "manual",
@@ -381,6 +412,18 @@ def test_proposal_diagnostics_includes_source_lineage(tmp_path) -> None:
         "source_type": "planner_recommendation",
         "source_id": "recommendation-1",
         "recommendation_id": "recommendation-1",
+    }
+    assert sources[planner_with_snapshot.id] == {
+        "proposal_id": planner_with_snapshot.id,
+        "source_type": "planner_recommendation",
+        "source_id": "recommendation-2",
+        "recommendation_id": "recommendation-2",
+    }
+    assert sources[planner_with_legacy_snapshot.id] == {
+        "proposal_id": planner_with_legacy_snapshot.id,
+        "source_type": "planner_recommendation",
+        "source_id": "recommendation-3",
+        "recommendation_id": "recommendation-3",
     }
 
 
@@ -511,6 +554,7 @@ def create_diagnostics_recommendation(
     recommendations: PlannerRecommendationService,
     session_id: str,
     governance_status: str = "ok",
+    context_snapshot: dict | None = None,
 ):
     return recommendations.create_recommendation(
         PlannerRequest(
@@ -526,6 +570,7 @@ def create_diagnostics_recommendation(
             confidence=0.75,
         ),
         {"governance_status": governance_status},
+        context_snapshot=context_snapshot,
     )
 
 
@@ -552,13 +597,28 @@ def test_planner_recommendation_diagnostics_counts_and_sessions(tmp_path) -> Non
         reconstruction=reconstruction,
     )
 
-    first = create_diagnostics_recommendation(recommendations, "session-1", "ok")
+    first = create_diagnostics_recommendation(
+        recommendations,
+        "session-1",
+        "ok",
+        context_snapshot={
+            "schema_version": 1,
+            "active_proposal_count": 0,
+            "active_recommendation_count": 0,
+            "available_tool_count": 1,
+            "recent_event_count": 0,
+            "diagnostics_summary": {},
+        },
+    )
     second = create_diagnostics_recommendation(
         recommendations,
         "session-1",
         "degraded",
+        context_snapshot={"available_tool_count": 1},
     )
     third = create_diagnostics_recommendation(recommendations, "session-2", "ok")
+    recommendations.mark_promoted(first.id)
+    asyncio.run(recommendations.dismiss(third.id))
     events.emit_event_sync(
         EventType.PLANNER_RECOMMENDATION_PROMOTED,
         "Recommendation promoted",
@@ -573,9 +633,24 @@ def test_planner_recommendation_diagnostics_counts_and_sessions(tmp_path) -> Non
     health = service.planner_recommendation_health()
 
     assert health["total_recommendations"] == 3
+    assert health["recommendation_context_snapshot_count"] == 2
+    assert health["recommendations_missing_context_snapshot"] == 1
+    assert health["recommendation_context_snapshot_version_counts"] == {
+        "1": 1,
+        "legacy_or_unknown": 1,
+    }
+    assert (
+        health["recommendations_with_legacy_or_unknown_context_snapshot"]
+        == 1
+    )
     assert health["governance_status_counts"] == {
         "ok": 2,
         "degraded": 1,
+    }
+    assert health["planner_recommendation_status_counts"] == {
+        "active": 1,
+        "promoted": 1,
+        "dismissed": 1,
     }
     assert health["promoted_count"] == 1
     assert health["unpromoted_count"] == 2
@@ -606,9 +681,64 @@ def test_planner_recommendation_diagnostics_detects_missing_promotion_reference(
     health = service.planner_recommendation_health()
 
     assert health["total_recommendations"] == 0
+    assert health["recommendation_context_snapshot_count"] == 0
+    assert health["recommendations_missing_context_snapshot"] == 0
+    assert health["recommendation_context_snapshot_version_counts"] == {}
+    assert (
+        health["recommendations_with_legacy_or_unknown_context_snapshot"]
+        == 0
+    )
+    assert health["planner_recommendation_status_counts"] == {
+        "active": 0,
+        "promoted": 0,
+        "dismissed": 0,
+    }
     assert health["consistency"]["consistent"] is False
     assert health["consistency"]["missing_promotion_references"] == [
         "missing-recommendation"
+    ]
+    assert health["missing_recommendation_lifecycle_reference_count"] == 1
+    assert health["invalid_recommendation_status_transition_count"] == 0
+    assert health["duplicate_recommendation_terminal_event_count"] == 0
+
+
+def test_planner_recommendation_diagnostics_exposes_lifecycle_issues(
+    tmp_path,
+) -> None:
+    events = EventService(TraceService(tmp_path / "trace.db"))
+    service = DiagnosticsService(
+        events=events,
+        reconstruction=ReconstructionService(events=events),
+    )
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_CREATED,
+        "Created",
+        metadata={"recommendation_id": "recommendation-1"},
+    )
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_DISMISSED,
+        "Dismissed",
+        metadata={"recommendation_id": "recommendation-1"},
+    )
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_DISMISSED,
+        "Dismissed again",
+        metadata={"recommendation_id": "recommendation-1"},
+    )
+    events.emit_event_sync(
+        EventType.PLANNER_RECOMMENDATION_PROMOTED,
+        "Promoted after dismissal",
+        metadata={"recommendation_id": "recommendation-1"},
+    )
+
+    health = service.planner_recommendation_health()
+
+    assert health["invalid_recommendation_status_transition_count"] == 1
+    assert health["missing_recommendation_lifecycle_reference_count"] == 0
+    assert health["duplicate_recommendation_terminal_event_count"] == 1
+    assert [issue["issue_type"] for issue in health["recommendation_lifecycle_issues"]] == [
+        "duplicate_terminal_event",
+        "invalid_status_transition",
     ]
 
 
@@ -634,7 +764,21 @@ def test_planner_recommendation_diagnostics_endpoint(tmp_path) -> None:
 
     assert response.status_code == 200
     assert response.json()["total_recommendations"] == 1
+    assert response.json()["recommendation_context_snapshot_count"] == 0
+    assert response.json()["recommendations_missing_context_snapshot"] == 1
+    assert response.json()["recommendation_context_snapshot_version_counts"] == {}
+    assert (
+        response.json()[
+            "recommendations_with_legacy_or_unknown_context_snapshot"
+        ]
+        == 0
+    )
     assert response.json()["governance_status_counts"] == {"ok": 1}
+    assert response.json()["planner_recommendation_status_counts"] == {
+        "active": 1,
+        "promoted": 0,
+        "dismissed": 0,
+    }
 
 
 def test_diagnostics_summary_empty(tmp_path) -> None:
@@ -672,7 +816,9 @@ def test_diagnostics_summary_empty(tmp_path) -> None:
         },
         "planner_recommendations": {
             "planner_recommendation_count": 0,
+            "active_recommendation_count": 0,
             "planner_recommendation_promoted_count": 0,
+            "dismissed_recommendation_count": 0,
             "planner_recommendation_unpromoted_count": 0,
         },
         "integrity": {
@@ -735,7 +881,9 @@ def test_diagnostics_summary_with_task_proposal_and_event_data(tmp_path) -> None
     }
     assert summary["planner_recommendations"] == {
         "planner_recommendation_count": 0,
+        "active_recommendation_count": 0,
         "planner_recommendation_promoted_count": 0,
+        "dismissed_recommendation_count": 0,
         "planner_recommendation_unpromoted_count": 0,
     }
 
@@ -764,6 +912,7 @@ def test_diagnostics_summary_includes_planner_recommendation_counts(tmp_path) ->
     )
     promoted = create_diagnostics_recommendation(recommendations, "session-1")
     create_diagnostics_recommendation(recommendations, "session-2")
+    recommendations.mark_promoted(promoted.id)
     events.emit_event_sync(
         EventType.PLANNER_RECOMMENDATION_PROMOTED,
         "Recommendation promoted",
@@ -777,7 +926,9 @@ def test_diagnostics_summary_includes_planner_recommendation_counts(tmp_path) ->
 
     assert service.runtime_summary()["planner_recommendations"] == {
         "planner_recommendation_count": 2,
+        "active_recommendation_count": 1,
         "planner_recommendation_promoted_count": 1,
+        "dismissed_recommendation_count": 0,
         "planner_recommendation_unpromoted_count": 1,
     }
 

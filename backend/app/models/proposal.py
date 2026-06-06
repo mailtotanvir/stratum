@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -34,6 +35,7 @@ class Proposal(BaseModel):
     task_id: str | None = None
     source_type: ProposalSourceType = ProposalSourceType.MANUAL
     source_id: str | None = None
+    source_context_snapshot: dict[str, Any] | None = None
     title: str
     body: str
     status: ProposalStatus

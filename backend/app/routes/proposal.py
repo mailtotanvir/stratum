@@ -26,6 +26,7 @@ def to_proposal(record: ProposalRecord) -> Proposal:
         task_id=record.task_id,
         source_type=record.source_type,
         source_id=record.source_id,
+        source_context_snapshot=proposal_service.source_context_snapshot_for(record),
         title=record.title,
         body=record.body,
         status=record.status,

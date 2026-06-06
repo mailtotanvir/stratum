@@ -19,8 +19,11 @@ from app.models.planner import (
     PlannerRecommendation,
     PlannerRecommendationPromotionResponse,
     PlannerRecommendationResponse,
+    PlannerRecommendationStatus,
     PlannerResponse,
+    RecommendationSelectionPreview,
 )
+from app.models.planning_context import PlanningContext
 from app.models.proposal import Proposal
 from app.models.proposal import ProposalSourceType
 from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskArtifact
@@ -34,11 +37,16 @@ from app.services.artifact_service import ArtifactNotFoundError, artifact_servic
 from app.services.event_service import event_service
 from app.services.governance_service import governance_service
 from app.services.planner_recommendation_service import (
+    InvalidPlannerRecommendationTransitionError,
     PlannerRecommendationNotFoundError,
     planner_recommendation_service,
 )
 from app.services.planner_service import planner_service
+from app.services.planning_context_service import planning_context_service
 from app.services.proposal_service import proposal_service
+from app.services.recommendation_selection_service import (
+    recommendation_selection_service,
+)
 from app.services.runtime_artifact_service import (
     RuntimeArtifactAlreadyAttachedError,
     RuntimeArtifactSessionMismatchError,
@@ -110,6 +118,7 @@ def to_proposal(record) -> Proposal:
         task_id=record.task_id,
         source_type=record.source_type,
         source_id=record.source_id,
+        source_context_snapshot=proposal_service.source_context_snapshot_for(record),
         title=record.title,
         body=record.body,
         status=record.status,
@@ -158,6 +167,8 @@ def to_planner_recommendation(record) -> PlannerRecommendation:
         rationale=record.rationale,
         confidence=record.confidence,
         governance_status=record.governance_status,
+        status=record.status,
+        context_snapshot=planner_recommendation_service.context_snapshot_for(record),
         created_at=record.created_at.isoformat(),
     )
 
@@ -178,6 +189,27 @@ def planner_request_for_session(
         objective=request.objective,
         available_tools=available_tools,
         context=request.context,
+    )
+
+
+def planner_request_from_planning_context(
+    session_id: str,
+    objective: str,
+) -> tuple[PlannerRequest, PlanningContext]:
+    planning_context = planning_context_service.build(session_id)
+
+    return (
+        PlannerRequest(
+            task_id=planning_context.task_id,
+            session_id=planning_context.session_id,
+            objective=objective,
+            available_tools=planning_context.available_tools,
+            context={
+                "context_source": "planning_context",
+                "planning_context": planning_context.model_dump(mode="json"),
+            },
+        ),
+        planning_context,
     )
 
 
@@ -221,13 +253,24 @@ def get_runtime_session(session_id: str) -> RuntimeSession:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/runtime/sessions/{session_id}/planning-context")
+def get_planning_context(session_id: str) -> PlanningContext:
+    try:
+        return planning_context_service.build(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/runtime/sessions/{session_id}/planner-preview")
 async def planner_preview(
     session_id: str,
     request: PlannerPreviewRequest,
 ) -> PlannerResponse:
     try:
-        planner_request = planner_request_for_session(session_id, request)
+        planner_request, _ = planner_request_from_planning_context(
+            session_id,
+            request.objective,
+        )
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -240,7 +283,10 @@ async def planner_proposal_preview(
     request: PlannerPreviewRequest,
 ) -> PlannerProposalPreviewResponse:
     try:
-        planner_request = planner_request_for_session(session_id, request)
+        planner_request, _ = planner_request_from_planning_context(
+            session_id,
+            request.objective,
+        )
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -260,7 +306,10 @@ async def create_planner_recommendation(
     request: PlannerPreviewRequest,
 ) -> PlannerRecommendationResponse:
     try:
-        planner_request = planner_request_for_session(session_id, request)
+        planner_request, planning_context = planner_request_from_planning_context(
+            session_id,
+            request.objective,
+        )
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -270,6 +319,9 @@ async def create_planner_recommendation(
         planner_request=planner_request,
         planner_response=planner_response,
         governance_preview=governance_preview,
+        context_snapshot=planning_context_service.compact_snapshot(
+            planning_context
+        ),
     )
 
     return PlannerRecommendationResponse(
@@ -282,6 +334,7 @@ async def create_planner_recommendation(
 @router.get("/runtime/sessions/{session_id}/planner-recommendations")
 def list_planner_recommendations(
     session_id: str,
+    status: PlannerRecommendationStatus | None = None,
 ) -> list[PlannerRecommendation]:
     try:
         runtime_session_service.get_session(session_id)
@@ -290,8 +343,26 @@ def list_planner_recommendations(
 
     return [
         to_planner_recommendation(record)
-        for record in planner_recommendation_service.list_recommendations(session_id)
+        for record in planner_recommendation_service.list_recommendations(
+            session_id,
+            status=status.value if status is not None else None,
+        )
     ]
+
+
+@router.get(
+    "/runtime/sessions/{session_id}/planner-recommendations/"
+    "selection-preview"
+)
+def preview_planner_recommendation_selection(
+    session_id: str,
+) -> RecommendationSelectionPreview:
+    try:
+        runtime_session_service.get_session(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return recommendation_selection_service.preview(session_id)
 
 
 @router.post(
@@ -320,8 +391,19 @@ async def promote_planner_recommendation(
                 f"{recommendation_id}"
             ),
         )
+    if recommendation_record.status == PlannerRecommendationStatus.DISMISSED.value:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Dismissed planner recommendation cannot be promoted: "
+                f"{recommendation_id}"
+            ),
+        )
 
     proposed_tool = planner_recommendation_service.proposed_tool_for(
+        recommendation_record
+    )
+    context_snapshot = planner_recommendation_service.context_snapshot_for(
         recommendation_record
     )
     proposal_record = await proposal_service.create_proposal_async(
@@ -342,8 +424,15 @@ async def promote_planner_recommendation(
         task_id=recommendation_record.task_id,
         source_type=ProposalSourceType.PLANNER_RECOMMENDATION.value,
         source_id=recommendation_record.id,
+        source_context_snapshot=context_snapshot,
     )
     proposal = to_proposal(proposal_record)
+    try:
+        recommendation_record = planner_recommendation_service.mark_promoted(
+            recommendation_record.id
+        )
+    except InvalidPlannerRecommendationTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     await event_service.emit_event(
         event_type=EventType.PLANNER_RECOMMENDATION_PROMOTED,
@@ -354,6 +443,8 @@ async def promote_planner_recommendation(
             "task_id": recommendation_record.task_id,
             "session_id": recommendation_record.session_id,
             "proposed_tool": proposed_tool,
+            "has_source_context_snapshot": context_snapshot is not None,
+            "status": PlannerRecommendationStatus.PROMOTED.value,
         },
     )
 
@@ -361,6 +452,43 @@ async def promote_planner_recommendation(
         proposal=proposal,
         recommendation=to_planner_recommendation(recommendation_record),
     )
+
+
+@router.post(
+    "/runtime/sessions/{session_id}/planner-recommendations/"
+    "{recommendation_id}/dismiss"
+)
+async def dismiss_planner_recommendation(
+    session_id: str,
+    recommendation_id: str,
+) -> PlannerRecommendation:
+    try:
+        runtime_session_service.get_session(session_id)
+        recommendation_record = planner_recommendation_service.get_recommendation(
+            recommendation_id
+        )
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlannerRecommendationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if recommendation_record.session_id != session_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Planner recommendation does not belong to runtime session: "
+                f"{recommendation_id}"
+            ),
+        )
+
+    try:
+        dismissed = await planner_recommendation_service.dismiss(
+            recommendation_id
+        )
+    except InvalidPlannerRecommendationTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return to_planner_recommendation(dismissed)
 
 
 @router.post("/runtime/sessions/{session_id}/planner-proposal")

@@ -26,6 +26,7 @@ PROPOSAL_LIFECYCLE_EVENTS = {
 PLANNER_RECOMMENDATION_EVENTS = {
     EventType.PLANNER_RECOMMENDATION_CREATED.value,
     EventType.PLANNER_RECOMMENDATION_PROMOTED.value,
+    EventType.PLANNER_RECOMMENDATION_DISMISSED.value,
 }
 
 
@@ -162,18 +163,54 @@ class ReconstructionService:
             for recommendation_id, state in states.items()
             if state["promoted"] and not state["found"]
         ]
+        missing_dismissal_references = [
+            recommendation_id
+            for recommendation_id, state in states.items()
+            if state["dismissed_at"] is not None and not state["found"]
+        ]
+        lifecycle_issues = [
+            issue
+            for state in states.values()
+            for issue in state["lifecycle_issues"]
+        ]
+        invalid_transition_count = sum(
+            1
+            for issue in lifecycle_issues
+            if issue["issue_type"] == "invalid_status_transition"
+        )
+        missing_lifecycle_reference_count = sum(
+            1
+            for issue in lifecycle_issues
+            if issue["issue_type"] == "missing_lifecycle_reference"
+        )
+        duplicate_terminal_event_count = sum(
+            1
+            for issue in lifecycle_issues
+            if issue["issue_type"] == "duplicate_terminal_event"
+        )
         missing_record_events: list[str] = []
         for record in self._recommendations.list_recommendations():
             if record.id not in states:
                 missing_record_events.append(record.id)
 
-        inconsistent = len(missing_promotion_references) + len(missing_record_events)
+        inconsistent = len(lifecycle_issues) + len(missing_record_events)
         return {
             "checked": len(states),
             "consistent": inconsistent == 0,
             "inconsistent": inconsistent,
             "missing_promotion_references": missing_promotion_references,
+            "missing_dismissal_references": missing_dismissal_references,
             "missing_record_events": missing_record_events,
+            "invalid_recommendation_status_transition_count": (
+                invalid_transition_count
+            ),
+            "missing_recommendation_lifecycle_reference_count": (
+                missing_lifecycle_reference_count
+            ),
+            "duplicate_recommendation_terminal_event_count": (
+                duplicate_terminal_event_count
+            ),
+            "lifecycle_issues": lifecycle_issues,
         }
 
     def _reconstruct_states(self) -> dict[str, dict[str, Any]]:
@@ -287,6 +324,7 @@ class ReconstructionService:
                 "task_id": None,
                 "source_type": "manual",
                 "source_id": None,
+                "source_context_snapshot": None,
                 "title": None,
                 "body": None,
                 "status": None,
@@ -313,6 +351,10 @@ class ReconstructionService:
         status = metadata.get("status")
         if isinstance(status, str):
             state["status"] = status
+
+        source_context_snapshot = metadata.get("source_context_snapshot")
+        if isinstance(source_context_snapshot, dict):
+            state["source_context_snapshot"] = source_context_snapshot
 
         if event.type == EventType.PROPOSAL_GENERATED:
             state["status"] = "proposed"
@@ -347,9 +389,15 @@ class ReconstructionService:
                 "rationale": None,
                 "confidence": None,
                 "governance_status": None,
+                "status": "active",
+                "context_snapshot": None,
                 "created_at": None,
+                "promoted_at": None,
+                "dismissed_at": None,
+                "terminal_status_reason": None,
                 "promoted": False,
                 "proposal_id": None,
+                "lifecycle_issues": [],
             },
         )
 
@@ -375,11 +423,36 @@ class ReconstructionService:
             if isinstance(confidence, (int, float)):
                 state["confidence"] = float(confidence)
 
+            context_snapshot = metadata.get("context_snapshot")
+            if isinstance(context_snapshot, dict):
+                state["context_snapshot"] = context_snapshot
+            status = metadata.get("status")
+            if isinstance(status, str):
+                state["status"] = status
+
             if state["created_at"] is None:
                 state["created_at"] = event.ts
 
         elif event.type == EventType.PLANNER_RECOMMENDATION_PROMOTED:
+            if not state["found"]:
+                self._append_recommendation_issue(
+                    state,
+                    event,
+                    issue_type="missing_lifecycle_reference",
+                    previous_status=state["status"],
+                )
+            if state["status"] == "dismissed":
+                self._append_recommendation_issue(
+                    state,
+                    event,
+                    issue_type="invalid_status_transition",
+                    previous_status="dismissed",
+                )
+                state["terminal_status_reason"] = "promoted_after_dismissed"
             state["promoted"] = True
+            state["status"] = "promoted"
+            if state["promoted_at"] is None:
+                state["promoted_at"] = event.ts
             for field in ["task_id", "session_id"]:
                 value = metadata.get(field)
                 if isinstance(value, str):
@@ -390,6 +463,55 @@ class ReconstructionService:
             proposed_tool = metadata.get("proposed_tool")
             if isinstance(proposed_tool, dict) or proposed_tool is None:
                 state["proposed_tool"] = proposed_tool
+        elif event.type == EventType.PLANNER_RECOMMENDATION_DISMISSED:
+            if not state["found"]:
+                self._append_recommendation_issue(
+                    state,
+                    event,
+                    issue_type="missing_lifecycle_reference",
+                    previous_status=state["status"],
+                )
+            if state["status"] == "promoted":
+                self._append_recommendation_issue(
+                    state,
+                    event,
+                    issue_type="invalid_status_transition",
+                    previous_status="promoted",
+                )
+                state["terminal_status_reason"] = "dismissed_after_promoted"
+            elif state["status"] == "dismissed":
+                self._append_recommendation_issue(
+                    state,
+                    event,
+                    issue_type="duplicate_terminal_event",
+                    previous_status="dismissed",
+                )
+                state["terminal_status_reason"] = "duplicate_dismissal"
+            state["status"] = "dismissed"
+            if state["dismissed_at"] is None:
+                state["dismissed_at"] = event.ts
+            for field in ["task_id", "session_id"]:
+                value = metadata.get(field)
+                if isinstance(value, str):
+                    state[field] = value
+
+    def _append_recommendation_issue(
+        self,
+        state: dict[str, Any],
+        event: RuntimeEvent,
+        issue_type: str,
+        previous_status: str,
+    ) -> None:
+        state["lifecycle_issues"].append(
+            {
+                "issue_type": issue_type,
+                "recommendation_id": state["recommendation_id"],
+                "event_type": event.type.value,
+                "event_id": event.id,
+                "timestamp": event.ts,
+                "previous_status": previous_status,
+            }
+        )
 
     def _record_to_state(self, record: TaskRecord) -> dict[str, Any]:
         return {
@@ -413,6 +535,9 @@ class ReconstructionService:
             "task_id": record.task_id,
             "source_type": record.source_type,
             "source_id": record.source_id,
+            "source_context_snapshot": (
+                self._proposals.source_context_snapshot_for(record)
+            ),
             "title": record.title,
             "body": record.body,
             "status": record.status,
@@ -447,6 +572,7 @@ class ReconstructionService:
             "task_id",
             "source_type",
             "source_id",
+            "source_context_snapshot",
             "title",
             "body",
             "status",

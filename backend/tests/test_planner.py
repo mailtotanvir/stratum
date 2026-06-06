@@ -11,7 +11,7 @@ from app.models.tool import Tool
 from app.planner.adapter import PlannerAdapter
 from app.planner.mock import MockPlannerAdapter
 from app.routes import runtime as runtime_routes
-from app.services.event_service import EventService
+from app.services.event_service import EventService, event_service
 from app.services.planner_recommendation_service import planner_recommendation_service
 from app.services.planner_service import PlannerService
 from app.services.proposal_service import proposal_service
@@ -234,7 +234,19 @@ def test_runtime_planner_preview_uses_session_task_id_and_available_tools(
     register_registry_tool("shell.read")
     register_registry_tool("artifact.register")
     adapter = RecordingPlannerAdapter()
+    original_build = runtime_routes.planning_context_service.build
+    built_session_ids: list[str] = []
+
+    def build_planning_context(session_id: str):
+        built_session_ids.append(session_id)
+        return original_build(session_id)
+
     monkeypatch.setattr(runtime_routes.planner_service, "_adapter", adapter)
+    monkeypatch.setattr(
+        runtime_routes.planning_context_service,
+        "build",
+        build_planning_context,
+    )
 
     response = client.post(
         f"/runtime/sessions/{session['id']}/planner-preview",
@@ -242,11 +254,21 @@ def test_runtime_planner_preview_uses_session_task_id_and_available_tools(
     )
 
     assert response.status_code == 200
+    assert built_session_ids == [session["id"]]
     assert adapter.request is not None
     assert adapter.request.task_id == "task-from-session"
     assert adapter.request.session_id == session["id"]
     assert adapter.request.objective == "Inspect available tools"
-    assert adapter.request.context == {"mode": "test"}
+    assert adapter.request.context["context_source"] == "planning_context"
+    planning_context = adapter.request.context["planning_context"]
+    assert planning_context["session_id"] == session["id"]
+    assert planning_context["task_id"] == "task-from-session"
+    assert {
+        tool["name"] for tool in planning_context["available_tools"]
+    } == {
+        "shell.read",
+        "artifact.register",
+    }
     assert {tool.name for tool in adapter.request.available_tools} == {
         "shell.read",
         "artifact.register",
@@ -293,7 +315,11 @@ def test_runtime_planner_preview_emits_planner_events() -> None:
     ]
     assert planner_events[0]["metadata"]["task_id"] == "task-for-events"
     assert planner_events[0]["metadata"]["session_id"] == session["id"]
+    assert planner_events[0]["metadata"]["context_source"] == "planning_context"
     assert planner_events[0]["metadata"]["available_tool_count"] == 1
+    assert planner_events[0]["metadata"]["active_proposal_count"] == 0
+    assert planner_events[0]["metadata"]["active_recommendation_count"] == 0
+    assert "planning_context" not in planner_events[0]["metadata"]
     assert planner_events[1]["metadata"]["proposed_tool_name"] == "shell.read"
 
 
@@ -530,6 +556,53 @@ def test_runtime_planner_proposal_preview_returns_planner_and_governance() -> No
     assert body["proposal_allowed"] is True
 
 
+def test_runtime_planner_proposal_preview_uses_planning_context_service(
+    monkeypatch,
+) -> None:
+    client = TestClient(app)
+    session = create_runtime_session(task_id="task-proposal-preview-context")
+    register_registry_tool("shell.read")
+    proposal_service.create_proposal(
+        "Existing proposal",
+        "Derived planner input",
+        task_id=session["task_id"],
+    )
+    adapter = RecordingPlannerAdapter()
+    original_build = runtime_routes.planning_context_service.build
+    built_session_ids: list[str] = []
+
+    def build_planning_context(session_id: str):
+        built_session_ids.append(session_id)
+        return original_build(session_id)
+
+    monkeypatch.setattr(runtime_routes.planner_service, "_adapter", adapter)
+    monkeypatch.setattr(
+        runtime_routes.planning_context_service,
+        "build",
+        build_planning_context,
+    )
+
+    response = client.post(
+        f"/runtime/sessions/{session['id']}/planner-proposal-preview",
+        json={
+            "objective": "Use derived proposal context",
+            "context": {"ignored": True},
+        },
+    )
+
+    assert response.status_code == 200
+    assert built_session_ids == [session["id"]]
+    assert adapter.request is not None
+    assert adapter.request.objective == "Use derived proposal context"
+    planning_context = adapter.request.context["planning_context"]
+    assert planning_context["active_proposals"][0]["title"] == (
+        "Existing proposal"
+    )
+    assert adapter.request.available_tools == [
+        Tool.model_validate(planning_context["available_tools"][0])
+    ]
+
+
 def test_runtime_planner_proposal_preview_invokes_governance(monkeypatch) -> None:
     client = TestClient(app)
     session = create_runtime_session()
@@ -688,6 +761,12 @@ def test_runtime_planner_recommendation_endpoint_persists_recommendation() -> No
     client = TestClient(app)
     session = create_runtime_session(task_id="task-for-recommendation")
     tool_record = register_registry_tool("shell.read")
+    for index in range(25):
+        event_service.emit_event_sync(
+            EventType.WARNING,
+            f"Planning event {index}",
+            metadata={"task_id": "task-for-recommendation"},
+        )
 
     response = client.post(
         f"/runtime/sessions/{session['id']}/planner-recommendations",
@@ -709,6 +788,24 @@ def test_runtime_planner_recommendation_endpoint_persists_recommendation() -> No
     assert recommendation["rationale"] == "Selected first enabled tool: shell.read"
     assert recommendation["confidence"] == 0.75
     assert recommendation["governance_status"] == "ok"
+    assert recommendation["status"] == "active"
+    context_snapshot = recommendation["context_snapshot"]
+    assert set(context_snapshot) == {
+        "schema_version",
+        "active_proposal_count",
+        "active_recommendation_count",
+        "available_tool_count",
+        "recent_event_count",
+        "diagnostics_summary",
+    }
+    assert context_snapshot["schema_version"] == 1
+    assert context_snapshot["active_proposal_count"] == 0
+    assert context_snapshot["active_recommendation_count"] == 0
+    assert context_snapshot["available_tool_count"] == 1
+    assert context_snapshot["recent_event_count"] == 20
+    assert context_snapshot["diagnostics_summary"]["event_count"] == 20
+    assert "recent_events" not in context_snapshot
+    assert "active_proposals" not in context_snapshot
     assert body["planner_response"]["proposed_tool"]["name"] == "shell.read"
     assert body["governance_preview"]["decision"] == "allow"
 
@@ -718,6 +815,57 @@ def test_runtime_planner_recommendation_endpoint_persists_recommendation() -> No
     assert stored.id == recommendation["id"]
     assert stored.task_id == "task-for-recommendation"
     assert stored.session_id == session["id"]
+    assert (
+        planner_recommendation_service.context_snapshot_for(stored)
+        == context_snapshot
+    )
+
+
+def test_runtime_planner_recommendation_uses_planning_context_service(
+    monkeypatch,
+) -> None:
+    client = TestClient(app)
+    session = create_runtime_session(task_id="task-recommendation-context")
+    register_registry_tool("shell.read")
+    proposal_service.create_proposal(
+        "Existing proposal",
+        "Derived recommendation input",
+        task_id=session["task_id"],
+    )
+    adapter = RecordingPlannerAdapter()
+    original_build = runtime_routes.planning_context_service.build
+    built_session_ids: list[str] = []
+
+    def build_planning_context(session_id: str):
+        built_session_ids.append(session_id)
+        return original_build(session_id)
+
+    monkeypatch.setattr(runtime_routes.planner_service, "_adapter", adapter)
+    monkeypatch.setattr(
+        runtime_routes.planning_context_service,
+        "build",
+        build_planning_context,
+    )
+
+    response = client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations",
+        json={
+            "objective": "Use derived recommendation context",
+            "context": {"ignored": True},
+        },
+    )
+
+    assert response.status_code == 200
+    assert built_session_ids == [session["id"]]
+    assert adapter.request is not None
+    assert adapter.request.objective == "Use derived recommendation context"
+    planning_context = adapter.request.context["planning_context"]
+    assert planning_context["active_proposals"][0]["title"] == (
+        "Existing proposal"
+    )
+    assert adapter.request.available_tools == [
+        Tool.model_validate(planning_context["available_tools"][0])
+    ]
 
 
 def test_runtime_planner_recommendation_event_is_emitted() -> None:
@@ -781,6 +929,27 @@ def test_runtime_planner_recommendations_list_returns_session_records_in_order()
         "First recommendation",
         "Second recommendation",
     ]
+    assert all(record["status"] == "active" for record in response.json())
+
+
+def test_runtime_planner_recommendations_list_filters_by_status() -> None:
+    client = TestClient(app)
+    session = create_runtime_session(task_id="task-filter-recommendations")
+    register_registry_tool("shell.read")
+    active = create_planner_recommendation(client, session["id"], "Active")
+    dismissed = create_planner_recommendation(client, session["id"], "Dismissed")
+    dismiss_response = client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations/"
+        f"{dismissed['id']}/dismiss"
+    )
+
+    response = client.get(
+        f"/runtime/sessions/{session['id']}/planner-recommendations",
+        params={"status": "active"},
+    )
+
+    assert dismiss_response.status_code == 200
+    assert [item["id"] for item in response.json()] == [active["id"]]
 
 
 def test_runtime_planner_recommendation_does_not_create_proposal_or_execute(
@@ -898,7 +1067,8 @@ def test_runtime_planner_recommendation_can_be_promoted_to_proposal() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["recommendation"] == recommendation
+    assert body["recommendation"]["id"] == recommendation["id"]
+    assert body["recommendation"]["status"] == "promoted"
     proposal = body["proposal"]
     assert proposal["id"]
     assert proposal["task_id"] == "task-promote-recommendation"
@@ -908,12 +1078,59 @@ def test_runtime_planner_recommendation_can_be_promoted_to_proposal() -> None:
     assert proposal["status"] == "proposed"
     assert proposal["source_type"] == "planner_recommendation"
     assert proposal["source_id"] == recommendation["id"]
+    assert proposal["source_context_snapshot"] == recommendation["context_snapshot"]
+    assert proposal["source_context_snapshot"]["schema_version"] == 1
 
     stored = proposal_service.get_proposal(proposal["id"])
     assert stored.id == proposal["id"]
     assert stored.task_id == "task-promote-recommendation"
     assert stored.source_type == "planner_recommendation"
     assert stored.source_id == recommendation["id"]
+    assert (
+        proposal_service.source_context_snapshot_for(stored)
+        == recommendation["context_snapshot"]
+    )
+    assert (
+        planner_recommendation_service.get_recommendation(
+            recommendation["id"]
+        ).status
+        == "promoted"
+    )
+
+
+def test_promote_legacy_recommendation_without_context_snapshot() -> None:
+    client = TestClient(app)
+    session = create_runtime_session(task_id="task-legacy-promotion")
+    register_registry_tool("shell.read")
+    available_tool = runtime_routes.to_available_tool(
+        tool_registry_service.get_tool_by_name("shell.read")
+    )
+    recommendation = planner_recommendation_service.create_recommendation(
+        PlannerRequest(
+            task_id=session["task_id"],
+            session_id=session["id"],
+            objective="Promote legacy recommendation",
+            available_tools=[available_tool],
+            context={},
+        ),
+        PlannerResponse(
+            proposed_tool=available_tool,
+            rationale="Legacy recommendation",
+            confidence=0.5,
+        ),
+        {"governance_status": "ok"},
+    )
+
+    response = client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations/"
+        f"{recommendation.id}/promote"
+    )
+
+    assert response.status_code == 200
+    proposal = response.json()["proposal"]
+    assert proposal["source_type"] == "planner_recommendation"
+    assert proposal["source_id"] == recommendation.id
+    assert proposal["source_context_snapshot"] is None
 
 
 def test_promoted_proposal_contains_recommendation_details() -> None:
@@ -972,6 +1189,92 @@ def test_promote_recommendation_session_mismatch_is_rejected() -> None:
     )
 
 
+def test_dismiss_recommendation_sets_status_without_execution(monkeypatch) -> None:
+    client = TestClient(app)
+    session = create_runtime_session(task_id="task-dismiss-recommendation")
+    register_registry_tool("shell.read")
+    recommendation = create_planner_recommendation(client, session["id"])
+
+    async def fail_async(*args, **kwargs):
+        raise AssertionError("dismissal must remain advisory")
+
+    monkeypatch.setattr(runtime_routes.planner_service, "plan", fail_async)
+    monkeypatch.setattr(
+        runtime_routes.work_loop_service,
+        "run_single_step",
+        fail_async,
+    )
+    monkeypatch.setattr(
+        tool_execution_service,
+        "execute_invocation",
+        fail_async,
+    )
+    monkeypatch.setattr(
+        runtime_routes.python_async_runtime,
+        "run_task",
+        fail_async,
+    )
+
+    response = client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations/"
+        f"{recommendation['id']}/dismiss"
+    )
+    proposals = proposal_service.list_proposals(task_id=session["task_id"])
+    invocations = tool_invocation_service.list_invocations(session_id=session["id"])
+    events = client.get("/trace").json()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "dismissed"
+    assert proposals == []
+    assert invocations == []
+    assert any(
+        event["type"] == "planner_recommendation_dismissed"
+        and event["metadata"]["status"] == "dismissed"
+        for event in events
+    )
+    event_types = [event["type"] for event in events]
+    assert "work_loop_started" not in event_types
+    assert "tool_invocation_requested" not in event_types
+    assert "tool_execution_started" not in event_types
+
+
+def test_dismissed_recommendation_cannot_be_promoted() -> None:
+    client = TestClient(app)
+    session = create_runtime_session(task_id="task-dismissed-terminal")
+    register_registry_tool("shell.read")
+    recommendation = create_planner_recommendation(client, session["id"])
+    client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations/"
+        f"{recommendation['id']}/dismiss"
+    )
+
+    response = client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations/"
+        f"{recommendation['id']}/promote"
+    )
+
+    assert response.status_code == 409
+    assert proposal_service.list_proposals(task_id=session["task_id"]) == []
+
+
+def test_promoted_recommendation_cannot_be_dismissed() -> None:
+    client = TestClient(app)
+    session = create_runtime_session(task_id="task-promoted-terminal")
+    register_registry_tool("shell.read")
+    recommendation = create_planner_recommendation(client, session["id"])
+    client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations/"
+        f"{recommendation['id']}/promote"
+    )
+
+    response = client.post(
+        f"/runtime/sessions/{session['id']}/planner-recommendations/"
+        f"{recommendation['id']}/dismiss"
+    )
+
+    assert response.status_code == 409
+
+
 def test_promote_missing_recommendation_returns_404() -> None:
     client = TestClient(app)
     session = create_runtime_session()
@@ -1017,8 +1320,14 @@ def test_promote_recommendation_emits_event() -> None:
     assert event["metadata"]["task_id"] == "task-promote-event"
     assert event["metadata"]["session_id"] == session["id"]
     assert event["metadata"]["proposed_tool"]["name"] == "shell.read"
+    assert event["metadata"]["has_source_context_snapshot"] is True
     assert proposal_event["metadata"]["source_type"] == "planner_recommendation"
     assert proposal_event["metadata"]["source_id"] == recommendation["id"]
+    assert proposal_event["metadata"]["has_source_context_snapshot"] is True
+    assert (
+        proposal_event["metadata"]["source_context_snapshot"]
+        == recommendation["context_snapshot"]
+    )
 
 
 def test_promote_recommendation_does_not_create_invocation_or_execute(
@@ -1088,6 +1397,7 @@ def test_promote_recommendation_allows_duplicate_promotions() -> None:
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["proposal"]["id"] != second.json()["proposal"]["id"]
+    assert second.json()["recommendation"]["status"] == "promoted"
 
 
 def test_promote_recommendation_uses_persisted_record_without_provider_calls() -> None:

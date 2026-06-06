@@ -161,6 +161,8 @@ class PlannerRecommendationRecord(Base):
     rationale: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float)
     governance_status: Mapped[str] = mapped_column(Text, index=True)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    context_snapshot_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
@@ -171,6 +173,7 @@ class ProposalRecord(Base):
     task_id: Mapped[str | None] = mapped_column(Text, index=True)
     source_type: Mapped[str] = mapped_column(Text, index=True)
     source_id: Mapped[str | None] = mapped_column(Text, index=True)
+    source_context_snapshot_json: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, index=True)

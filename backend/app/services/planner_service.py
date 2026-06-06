@@ -15,15 +15,41 @@ class PlannerService:
         self._events = events or event_service
 
     async def plan(self, request: PlannerRequest) -> PlannerResponse:
+        event_metadata = {
+            "task_id": request.task_id,
+            "session_id": request.session_id,
+            "objective": request.objective,
+            "available_tool_count": len(request.available_tools),
+        }
+        planning_context = request.context.get("planning_context")
+        if (
+            request.context.get("context_source") == "planning_context"
+            and isinstance(planning_context, dict)
+        ):
+            active_proposals = planning_context.get("active_proposals")
+            active_recommendations = planning_context.get(
+                "active_recommendations"
+            )
+            event_metadata.update(
+                {
+                    "context_source": "planning_context",
+                    "active_proposal_count": (
+                        len(active_proposals)
+                        if isinstance(active_proposals, list)
+                        else 0
+                    ),
+                    "active_recommendation_count": (
+                        len(active_recommendations)
+                        if isinstance(active_recommendations, list)
+                        else 0
+                    ),
+                }
+            )
+
         await self._events.emit_event(
             event_type=EventType.PLANNER_REQUESTED,
             message=f"Planner requested: {request.objective}",
-            metadata={
-                "task_id": request.task_id,
-                "session_id": request.session_id,
-                "objective": request.objective,
-                "available_tool_count": len(request.available_tools),
-            },
+            metadata=event_metadata,
         )
 
         response = await self._adapter.plan(request)

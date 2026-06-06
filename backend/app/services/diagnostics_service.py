@@ -1,6 +1,11 @@
 from typing import Any
 
 from app.models.proposal import ProposalSourceType, ProposalStatus
+from app.models.planning_context_snapshot import (
+    LEGACY_OR_UNKNOWN_SNAPSHOT_VERSION,
+    validate_planning_context_snapshot,
+)
+from app.models.planner import PlannerRecommendationStatus
 from app.models.runtime_event import EventType, Severity
 from app.models.task import TaskStatus
 from app.services.event_service import EventService, event_service
@@ -111,6 +116,10 @@ class DiagnosticsService:
             source_type.value: 0 for source_type in ProposalSourceType
         }
         sources: list[dict[str, str | None]] = []
+        planner_source_snapshot_count = 0
+        planner_source_missing_snapshot_count = 0
+        source_snapshot_version_counts: dict[str, int] = {}
+        planner_source_legacy_or_unknown_count = 0
         for proposal in proposals:
             if proposal.status in status_counts:
                 status_counts[proposal.status] += 1
@@ -125,6 +134,26 @@ class DiagnosticsService:
             }
             if source_type == ProposalSourceType.PLANNER_RECOMMENDATION.value:
                 source["recommendation_id"] = proposal.source_id
+                source_snapshot = self._proposals.source_context_snapshot_for(
+                    proposal
+                )
+                if source_snapshot is None:
+                    planner_source_missing_snapshot_count += 1
+                else:
+                    planner_source_snapshot_count += 1
+                    validation = validate_planning_context_snapshot(
+                        source_snapshot
+                    )
+                    classification = validation["classification"]
+                    source_snapshot_version_counts[classification] = (
+                        source_snapshot_version_counts.get(classification, 0)
+                        + 1
+                    )
+                    if (
+                        classification
+                        == LEGACY_OR_UNKNOWN_SNAPSHOT_VERSION
+                    ):
+                        planner_source_legacy_or_unknown_count += 1
             sources.append(source)
 
         proposal_events = [
@@ -163,6 +192,18 @@ class DiagnosticsService:
             "total_proposals": len(proposals),
             "status_counts": status_counts,
             "source_type_counts": source_type_counts,
+            "proposals_with_source_context_snapshot": (
+                planner_source_snapshot_count
+            ),
+            "proposals_missing_source_context_snapshot": (
+                planner_source_missing_snapshot_count
+            ),
+            "proposal_source_context_snapshot_version_counts": (
+                source_snapshot_version_counts
+            ),
+            "proposals_with_legacy_or_unknown_source_context_snapshot": (
+                planner_source_legacy_or_unknown_count
+            ),
             "sources": sources,
             "event_counts": event_counts,
             "event_source_type_counts": event_source_type_counts,
@@ -211,12 +252,16 @@ class DiagnosticsService:
             for recommendation in reconstructed
         }
         governance_status_counts: dict[str, int] = {}
+        status_counts = {
+            status.value: 0 for status in PlannerRecommendationStatus
+        }
         by_session_id: dict[str, list[str]] = {}
 
         for record in records:
             governance_status_counts[record.governance_status] = (
                 governance_status_counts.get(record.governance_status, 0) + 1
             )
+            status_counts[record.status] = status_counts.get(record.status, 0) + 1
             by_session_id.setdefault(record.session_id, []).append(record.id)
 
         promoted_count = sum(
@@ -225,14 +270,53 @@ class DiagnosticsService:
             if reconstructed_by_id.get(record.id, {}).get("promoted") is True
         )
         unpromoted_count = len(records) - promoted_count
+        context_snapshot_count = sum(
+            1
+            for record in records
+            if self._recommendations.context_snapshot_for(record) is not None
+        )
+        context_snapshot_version_counts: dict[str, int] = {}
+        legacy_or_unknown_context_snapshot_count = 0
+        for record in records:
+            context_snapshot = self._recommendations.context_snapshot_for(record)
+            if context_snapshot is None:
+                continue
+            validation = validate_planning_context_snapshot(context_snapshot)
+            classification = validation["classification"]
+            context_snapshot_version_counts[classification] = (
+                context_snapshot_version_counts.get(classification, 0) + 1
+            )
+            if classification == LEGACY_OR_UNKNOWN_SNAPSHOT_VERSION:
+                legacy_or_unknown_context_snapshot_count += 1
         consistency = self._reconstruction.recommendation_consistency_health()
 
         return {
             "total_recommendations": len(records),
+            "recommendation_context_snapshot_count": context_snapshot_count,
+            "recommendations_missing_context_snapshot": (
+                len(records) - context_snapshot_count
+            ),
+            "recommendation_context_snapshot_version_counts": (
+                context_snapshot_version_counts
+            ),
+            "recommendations_with_legacy_or_unknown_context_snapshot": (
+                legacy_or_unknown_context_snapshot_count
+            ),
             "governance_status_counts": governance_status_counts,
+            "planner_recommendation_status_counts": status_counts,
             "promoted_count": promoted_count,
             "unpromoted_count": unpromoted_count,
             "by_session_id": by_session_id,
+            "invalid_recommendation_status_transition_count": consistency[
+                "invalid_recommendation_status_transition_count"
+            ],
+            "missing_recommendation_lifecycle_reference_count": consistency[
+                "missing_recommendation_lifecycle_reference_count"
+            ],
+            "duplicate_recommendation_terminal_event_count": consistency[
+                "duplicate_recommendation_terminal_event_count"
+            ],
+            "recommendation_lifecycle_issues": consistency["lifecycle_issues"],
             "consistency": consistency,
         }
 
@@ -267,12 +351,20 @@ class DiagnosticsService:
                 "planner_recommendation_count": recommendation_health[
                     "total_recommendations"
                 ],
+                "active_recommendation_count": recommendation_health[
+                    "planner_recommendation_status_counts"
+                ][PlannerRecommendationStatus.ACTIVE.value],
                 "planner_recommendation_promoted_count": recommendation_health[
-                    "promoted_count"
-                ],
-                "planner_recommendation_unpromoted_count": recommendation_health[
-                    "unpromoted_count"
-                ],
+                    "planner_recommendation_status_counts"
+                ][PlannerRecommendationStatus.PROMOTED.value],
+                "dismissed_recommendation_count": recommendation_health[
+                    "planner_recommendation_status_counts"
+                ][PlannerRecommendationStatus.DISMISSED.value],
+                "planner_recommendation_unpromoted_count": (
+                    recommendation_health[
+                        "planner_recommendation_status_counts"
+                    ][PlannerRecommendationStatus.ACTIVE.value]
+                ),
             },
             "integrity": {
                 "missing_task_id_count": event_health["missing_task_id_count"],

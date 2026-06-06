@@ -1,8 +1,9 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.schema import Base, ProposalRecord
@@ -40,6 +41,7 @@ class ProposalService:
         if self._session_factory is None:
             self._engine = create_sqlite_engine(self._db_path)
             Base.metadata.create_all(self._engine)
+            self._ensure_source_context_snapshot_column(self._engine)
             self._session_factory = create_session_factory(self._engine)
         return self._session_factory
 
@@ -55,6 +57,7 @@ class ProposalService:
         task_id: str | None = None,
         source_type: str = ProposalSourceType.MANUAL.value,
         source_id: str | None = None,
+        source_context_snapshot: dict | None = None,
     ) -> ProposalRecord:
         record = self._create_proposal_record(
             title=title,
@@ -62,6 +65,7 @@ class ProposalService:
             task_id=task_id,
             source_type=source_type,
             source_id=source_id,
+            source_context_snapshot=source_context_snapshot,
         )
 
         self._emit_event(
@@ -78,6 +82,7 @@ class ProposalService:
         task_id: str | None = None,
         source_type: str = ProposalSourceType.MANUAL.value,
         source_id: str | None = None,
+        source_context_snapshot: dict | None = None,
     ) -> ProposalRecord:
         record = self._create_proposal_record(
             title=title,
@@ -85,6 +90,7 @@ class ProposalService:
             task_id=task_id,
             source_type=source_type,
             source_id=source_id,
+            source_context_snapshot=source_context_snapshot,
         )
 
         await self._emit_event_async(
@@ -101,6 +107,7 @@ class ProposalService:
         task_id: str | None = None,
         source_type: str = ProposalSourceType.MANUAL.value,
         source_id: str | None = None,
+        source_context_snapshot: dict | None = None,
     ) -> ProposalRecord:
         parsed_source_type = ProposalSourceType(source_type)
         record = ProposalRecord(
@@ -108,6 +115,15 @@ class ProposalService:
             task_id=task_id,
             source_type=parsed_source_type.value,
             source_id=source_id,
+            source_context_snapshot_json=(
+                json.dumps(
+                    source_context_snapshot,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                if source_context_snapshot is not None
+                else None
+            ),
             title=title,
             body=body,
             status=ProposalStatus.PROPOSED.value,
@@ -152,12 +168,21 @@ class ProposalService:
 
         return record
 
-    def get_proposal_source(self, proposal_id: str) -> dict[str, str | None]:
+    def source_context_snapshot_for(
+        self,
+        record: ProposalRecord,
+    ) -> dict | None:
+        if record.source_context_snapshot_json is None:
+            return None
+        return json.loads(record.source_context_snapshot_json)
+
+    def get_proposal_source(self, proposal_id: str) -> dict[str, object]:
         record = self.get_proposal(proposal_id)
         source = {
             "proposal_id": record.id,
             "source_type": record.source_type,
             "source_id": record.source_id,
+            "source_context_snapshot": self.source_context_snapshot_for(record),
         }
         if record.source_type == ProposalSourceType.PLANNER_RECOMMENDATION.value:
             source["recommendation_id"] = record.source_id
@@ -205,7 +230,7 @@ class ProposalService:
         message: str,
         severity: Severity = Severity.INFO,
     ) -> None:
-        metadata = self._event_metadata(record)
+        metadata = self._event_metadata(event_type, record)
 
         self._events.emit_event_sync(
             event_type=event_type,
@@ -221,7 +246,7 @@ class ProposalService:
         message: str,
         severity: Severity = Severity.INFO,
     ) -> None:
-        metadata = self._event_metadata(record)
+        metadata = self._event_metadata(event_type, record)
 
         await self._events.emit_event(
             event_type=event_type,
@@ -230,7 +255,12 @@ class ProposalService:
             metadata=metadata,
         )
 
-    def _event_metadata(self, record: ProposalRecord) -> dict[str, str]:
+    def _event_metadata(
+        self,
+        event_type: EventType,
+        record: ProposalRecord,
+    ) -> dict[str, object]:
+        source_context_snapshot = self.source_context_snapshot_for(record)
         metadata = {
             "proposal_id": record.id,
             "source_type": record.source_type,
@@ -239,7 +269,13 @@ class ProposalService:
             "body": record.body,
             "status": record.status,
             "created_at": record.created_at.isoformat(),
+            "has_source_context_snapshot": source_context_snapshot is not None,
         }
+        if (
+            event_type == EventType.PROPOSAL_GENERATED
+            and source_context_snapshot is not None
+        ):
+            metadata["source_context_snapshot"] = source_context_snapshot
         if record.task_id is not None:
             metadata["task_id"] = record.task_id
         if record.resolved_at is not None:
@@ -248,6 +284,20 @@ class ProposalService:
             metadata["decision"] = record.decision
 
         return metadata
+
+    def _ensure_source_context_snapshot_column(self, engine: Engine) -> None:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("proposals")
+        }
+        if "source_context_snapshot_json" not in columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE proposals "
+                        "ADD COLUMN source_context_snapshot_json TEXT"
+                    )
+                )
 
 
 proposal_service = ProposalService()
