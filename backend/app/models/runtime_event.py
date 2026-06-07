@@ -48,6 +48,7 @@ class EventType(StrEnum):
     TOOL_EXECUTION_FAILED = "tool_execution_failed"
     TOOL_EXECUTION_GOVERNANCE_WARNING = "tool_execution_governance_warning"
     TOOL_EXECUTION_GOVERNANCE_BLOCKED = "tool_execution_governance_blocked"
+    PLANNER_INPUT_BUILT = "planner_input_built"
     PLANNER_REQUESTED = "planner_requested"
     PLANNER_COMPLETED = "planner_completed"
     PLANNER_PROPOSAL_CREATED = "planner_proposal_created"

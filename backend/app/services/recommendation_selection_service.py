@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from app.models.planner import (
+    PlannerInputSnapshotMetadata,
     PlannerRecommendationStatus,
     RankedPlannerRecommendation,
     RecommendationSelectionPreview,
@@ -25,7 +26,11 @@ class RecommendationSelectionService:
     ) -> None:
         self._recommendations = recommendations or planner_recommendation_service
 
-    def preview(self, session_id: str) -> RecommendationSelectionPreview:
+    def preview(
+        self,
+        session_id: str,
+        snapshot_metadata: PlannerInputSnapshotMetadata | None = None,
+    ) -> RecommendationSelectionPreview:
         records = self._recommendations.list_recommendations(
             session_id=session_id,
             status=PlannerRecommendationStatus.ACTIVE.value,
@@ -49,6 +54,7 @@ class RecommendationSelectionService:
                 session_id=session_id,
                 selection_reason="no_active_recommendations",
                 ranked_recommendations=[],
+                **self._snapshot_fields(snapshot_metadata),
             )
 
         selected = ranked_recommendations[0]
@@ -60,7 +66,24 @@ class RecommendationSelectionService:
                 "highest_governance_status_then_confidence_then_recency_then_id"
             ),
             ranked_recommendations=ranked_recommendations,
+            **self._snapshot_fields(snapshot_metadata),
         )
+
+    def _snapshot_fields(
+        self,
+        snapshot_metadata: PlannerInputSnapshotMetadata | None,
+    ) -> dict[str, int | str | None]:
+        if snapshot_metadata is None:
+            return {}
+        return {
+            "planner_context_snapshot_version": (
+                snapshot_metadata.planner_context_snapshot_version
+            ),
+            "cognitive_state_snapshot_version": (
+                snapshot_metadata.cognitive_state_snapshot_version
+            ),
+            "planner_input_source": snapshot_metadata.source,
+        }
 
     def _ranking_key(self, record) -> tuple[int, float, float, str]:
         governance_rank = GOVERNANCE_STATUS_RANK.get(

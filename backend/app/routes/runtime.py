@@ -21,7 +21,6 @@ from app.models.planner import (
     PlannerPreviewRequest,
     PlannerProposalPreviewResponse,
     PlannerProposalResponse,
-    PlannerRequest,
     PlannerRecommendation,
     PlannerRecommendationPromotionResponse,
     PlannerRecommendationResponse,
@@ -213,25 +212,6 @@ def to_decision_evidence(record) -> DecisionEvidence:
     )
 
 
-def planner_request_for_session(
-    session_id: str,
-    request: PlannerPreviewRequest,
-) -> PlannerRequest:
-    runtime_session = runtime_session_service.get_session(session_id)
-    available_tools = [
-        to_available_tool(tool)
-        for tool in tool_registry_service.list_tools()
-    ]
-
-    return PlannerRequest(
-        task_id=runtime_session.task_id,
-        session_id=runtime_session.id,
-        objective=request.objective,
-        available_tools=available_tools,
-        context=request.context,
-    )
-
-
 def to_artifact(record: ArtifactRecord) -> Artifact:
     return Artifact(
         id=record.id,
@@ -294,7 +274,7 @@ async def planner_preview(
     request: PlannerPreviewRequest,
 ) -> PlannerResponse:
     try:
-        planner_request = planner_input_builder_service.build(
+        planner_request = await planner_input_builder_service.build(
             session_id,
             request.objective,
         )
@@ -310,7 +290,7 @@ async def planner_proposal_preview(
     request: PlannerPreviewRequest,
 ) -> PlannerProposalPreviewResponse:
     try:
-        planner_request = planner_input_builder_service.build(
+        planner_request = await planner_input_builder_service.build(
             session_id,
             request.objective,
         )
@@ -333,7 +313,7 @@ async def create_planner_recommendation(
     request: PlannerPreviewRequest,
 ) -> PlannerRecommendationResponse:
     try:
-        planner_request = planner_input_builder_service.build(
+        planner_request = await planner_input_builder_service.build(
             session_id,
             request.objective,
         )
@@ -446,15 +426,21 @@ def list_decision_evidence(decision_id: str) -> list[DecisionEvidence]:
     "/runtime/sessions/{session_id}/planner-recommendations/"
     "selection-preview"
 )
-def preview_planner_recommendation_selection(
+async def preview_planner_recommendation_selection(
     session_id: str,
 ) -> RecommendationSelectionPreview:
     try:
-        runtime_session_service.get_session(session_id)
+        planner_request = await planner_input_builder_service.build(
+            session_id,
+            "Preview planner recommendation selection",
+        )
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    return recommendation_selection_service.preview(session_id)
+    return recommendation_selection_service.preview(
+        session_id,
+        snapshot_metadata=planner_request.snapshot_metadata,
+    )
 
 
 @router.post(
@@ -589,7 +575,10 @@ async def planner_proposal(
     request: PlannerPreviewRequest,
 ) -> PlannerProposalResponse:
     try:
-        planner_request = planner_request_for_session(session_id, request)
+        planner_request = await planner_input_builder_service.build(
+            session_id,
+            request.objective,
+        )
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

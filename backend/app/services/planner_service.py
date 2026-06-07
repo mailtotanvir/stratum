@@ -21,6 +21,22 @@ class PlannerService:
             "objective": request.objective,
             "available_tool_count": len(request.available_tools),
         }
+        if request.snapshot_metadata is not None:
+            event_metadata.update(
+                {
+                    "planner_input_source": request.snapshot_metadata.source,
+                    "planner_context_snapshot_version": (
+                        request.snapshot_metadata.planner_context_snapshot_version
+                    ),
+                }
+            )
+            if (
+                request.snapshot_metadata.cognitive_state_snapshot_version
+                is not None
+            ):
+                event_metadata["cognitive_state_snapshot_version"] = (
+                    request.snapshot_metadata.cognitive_state_snapshot_version
+                )
         if request.cognitive_state is not None:
             event_metadata.update(
                 {

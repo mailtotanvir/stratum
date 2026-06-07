@@ -1,7 +1,8 @@
+from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.cognitive_state import CognitiveState
 from app.models.proposal import Proposal
@@ -14,6 +15,14 @@ class PlannerRecommendationStatus(StrEnum):
     DISMISSED = "dismissed"
 
 
+class PlannerInputSnapshotMetadata(BaseModel):
+    session_id: str = Field(min_length=1)
+    planner_context_snapshot_version: int
+    cognitive_state_snapshot_version: int | None = None
+    built_at: datetime
+    source: Literal["planner_input_builder"] = "planner_input_builder"
+
+
 class PlannerRequest(BaseModel):
     task_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
@@ -21,11 +30,19 @@ class PlannerRequest(BaseModel):
     available_tools: list[Tool]
     context: dict[str, Any] = Field(default_factory=dict)
     cognitive_state: CognitiveState | None = None
+    snapshot_metadata: PlannerInputSnapshotMetadata | None = None
 
 
 class PlannerPreviewRequest(BaseModel):
     objective: str = Field(min_length=1)
     context: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlannerPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(min_length=1)
+    objective: str = Field(min_length=1)
 
 
 class PlannerResponse(BaseModel):
@@ -86,3 +103,6 @@ class RecommendationSelectionPreview(BaseModel):
     selected_proposed_tool: dict[str, Any] | None = None
     selection_reason: str
     ranked_recommendations: list[RankedPlannerRecommendation]
+    planner_context_snapshot_version: int | None = None
+    cognitive_state_snapshot_version: int | None = None
+    planner_input_source: str | None = None

@@ -137,6 +137,33 @@ The following are derived state:
 Derived state must not become an independent authority. It may be recalculated
 from persisted state and the Runtime Event Store.
 
+### Canonical Planner Input Boundary
+
+`PlannerInputBuilderService` is the canonical production boundary for creating
+`PlannerRequest`. Runtime, session, and planner routes must provide only a
+session identifier and objective, then use the builder before invoking
+`PlannerService`.
+
+`PlanningContext` and `CognitiveState` are derived and rebuildable. The Runtime
+Event Store and persisted session state remain authoritative; callers must not
+inject planner context or cognitive state directly. Direct `PlannerRequest`
+construction is limited to tests of planner models, adapters, services, and
+other explicit boundaries.
+
+Planner input construction emits a `planner_input_built` diagnostic event with
+only summary metadata. The event is observational and must not persist full
+`PlanningContext` or `CognitiveState` payloads.
+
+Canonical `PlannerRequest` instances include `PlannerInputSnapshotMetadata`
+with the session identifier, derived-state snapshot versions when defined,
+build timestamp, and builder source. This metadata is rebuilt with each planner
+input, is inspection-only, and does not replace Event Store or session state
+authority.
+
+Recommendation selection preview builds canonical planner input for snapshot
+metadata only. Ranking remains based on persisted recommendation records and
+does not use full planning context or cognitive state as authority.
+
 ## Snapshot Policy
 
 Recommendation and proposal lineage may contain a compact `context_snapshot`.

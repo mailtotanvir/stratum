@@ -5,7 +5,11 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models.planner import PlannerRequest, PlannerResponse
+from app.models.planner import (
+    PlannerInputSnapshotMetadata,
+    PlannerRequest,
+    PlannerResponse,
+)
 from app.models.tool import Tool
 from app.routes import runtime as runtime_routes
 from app.services.event_service import event_service
@@ -136,6 +140,29 @@ def test_selection_returns_no_selection_for_empty_active_set() -> None:
     assert preview.ranked_recommendations == []
 
 
+def test_selection_behavior_is_unchanged_with_snapshot_metadata() -> None:
+    service = selection_service(
+        [
+            recommendation("lower", confidence=0.4),
+            recommendation("higher", confidence=0.8),
+        ]
+    )
+
+    preview = service.preview(
+        "session-1",
+        snapshot_metadata=PlannerInputSnapshotMetadata(
+            session_id="session-1",
+            planner_context_snapshot_version=1,
+            built_at=datetime(2026, 6, 7, tzinfo=UTC),
+        ),
+    )
+
+    assert preview.selected_recommendation_id == "higher"
+    assert preview.planner_context_snapshot_version == 1
+    assert preview.cognitive_state_snapshot_version is None
+    assert preview.planner_input_source == "planner_input_builder"
+
+
 def planner_tool() -> Tool:
     return Tool(
         id="selection-tool",
@@ -201,6 +228,21 @@ def test_selection_preview_endpoint_is_read_only(monkeypatch) -> None:
     async def fail(*args, **kwargs):
         raise AssertionError("selection preview must remain read-only")
 
+    original_build = runtime_routes.planner_input_builder_service.build
+    build_calls: list[tuple[str, str]] = []
+    built_requests: list[PlannerRequest] = []
+
+    async def build(session_id: str, objective: str):
+        build_calls.append((session_id, objective))
+        planner_request = await original_build(session_id, objective)
+        built_requests.append(planner_request)
+        return planner_request
+
+    monkeypatch.setattr(
+        runtime_routes.planner_input_builder_service,
+        "build",
+        build,
+    )
     monkeypatch.setattr(runtime_routes.planner_service, "plan", fail)
     monkeypatch.setattr(runtime_routes.work_loop_service, "run_single_step", fail)
     monkeypatch.setattr(tool_execution_service, "execute_invocation", fail)
@@ -216,7 +258,11 @@ def test_selection_preview_endpoint_is_read_only(monkeypatch) -> None:
 
     response = client.get(
         f"/runtime/sessions/{session.id}/planner-recommendations/"
-        "selection-preview"
+        "selection-preview",
+        params={
+            "planning_context": '{"task_id":"forged-task"}',
+            "cognitive_state": '{"task_id":"forged-task"}',
+        },
     )
 
     statuses_after = {
@@ -226,14 +272,35 @@ def test_selection_preview_endpoint_is_read_only(monkeypatch) -> None:
         )
     }
     assert response.status_code == 200
-    assert response.json()["selected_recommendation_id"] == selected.id
-    assert response.json()["selected_proposed_tool"]["id"] == "selection-tool"
+    body = response.json()
+    assert build_calls == [
+        (session.id, "Preview planner recommendation selection")
+    ]
+    assert built_requests[0].context["context_source"] == "planning_context"
+    assert (
+        built_requests[0].context["planning_context"]["task_id"]
+        == session.task_id
+    )
+    assert built_requests[0].cognitive_state is not None
+    assert built_requests[0].cognitive_state.task_id == session.task_id
+    assert body["selected_recommendation_id"] == selected.id
+    assert body["selected_proposed_tool"]["id"] == "selection-tool"
+    assert body["planner_context_snapshot_version"] == 1
+    assert body["cognitive_state_snapshot_version"] is None
+    assert body["planner_input_source"] == "planner_input_builder"
+    assert "planning_context" not in body
+    assert "cognitive_state" not in body
     assert [
         item["recommendation_id"]
-        for item in response.json()["ranked_recommendations"]
+        for item in body["ranked_recommendations"]
     ] == [selected.id]
     assert statuses_after == statuses_before
-    assert len(event_service.list_persisted_events()) == event_count_before
+    events_after = event_service.list_persisted_events()
+    assert len(events_after) == event_count_before + 1
+    assert events_after[-1].type.value == "planner_input_built"
+    assert events_after[-1].metadata["session_id"] == session.id
+    assert "planning_context" not in events_after[-1].metadata
+    assert "cognitive_state" not in events_after[-1].metadata
     assert proposal_service.list_proposals(task_id=session.task_id) == []
     assert tool_invocation_service.list_invocations(session_id=session.id) == []
 

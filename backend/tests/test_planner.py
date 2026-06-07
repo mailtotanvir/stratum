@@ -1,11 +1,16 @@
 import asyncio
 import json
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models.planner import PlannerRequest, PlannerResponse
+from app.models.planner import (
+    PlannerInputSnapshotMetadata,
+    PlannerRequest,
+    PlannerResponse,
+)
 from app.models.runtime_event import EventType
 from app.models.tool import Tool
 from app.planner.adapter import PlannerAdapter
@@ -144,10 +149,49 @@ def test_planner_service_emits_requested_and_completed(tmp_path) -> None:
     asyncio.run(run_flow())
 
 
+def test_planner_service_behavior_is_unchanged_with_snapshot_metadata(
+    tmp_path,
+) -> None:
+    async def run_flow() -> None:
+        events = EventService(TraceService(tmp_path / "planner-metadata.db"))
+        service = PlannerService(adapter=MockPlannerAdapter(), events=events)
+        request = PlannerRequest(
+            **planner_payload(),
+            snapshot_metadata=PlannerInputSnapshotMetadata(
+                session_id="session-123",
+                planner_context_snapshot_version=1,
+                built_at=datetime(2026, 6, 7, 12, 0, tzinfo=UTC),
+            ),
+        )
+
+        response = await service.plan(request)
+        emitted = await events.list_events()
+
+        assert response.proposed_tool is not None
+        assert response.proposed_tool.name == "shell.read"
+        assert response.rationale == "Selected first enabled tool: shell.read"
+        assert response.confidence == 0.75
+        assert emitted[0].metadata["planner_input_source"] == (
+            "planner_input_builder"
+        )
+        assert emitted[0].metadata["planner_context_snapshot_version"] == 1
+        assert "cognitive_state_snapshot_version" not in emitted[0].metadata
+
+    asyncio.run(run_flow())
+
+
 def test_planner_plan_endpoint_returns_valid_response() -> None:
     client = TestClient(app)
+    session = runtime_session_service.create_session("planner-route-task")
+    register_registry_tool("shell.read")
 
-    response = client.post("/planner/plan", json=planner_payload())
+    response = client.post(
+        "/planner/plan",
+        json={
+            "session_id": session.id,
+            "objective": "Choose a canonical tool",
+        },
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -158,8 +202,13 @@ def test_planner_plan_endpoint_returns_valid_response() -> None:
 
 def test_planner_plan_endpoint_does_not_trigger_runtime_work_loop() -> None:
     client = TestClient(app)
+    session = runtime_session_service.create_session("planner-route-task")
+    register_registry_tool("shell.read")
 
-    response = client.post("/planner/plan", json=planner_payload())
+    response = client.post(
+        "/planner/plan",
+        json={"session_id": session.id, "objective": "Preview only"},
+    )
     trace_response = client.get("/trace")
 
     assert response.status_code == 200
@@ -172,6 +221,60 @@ def test_planner_plan_endpoint_does_not_trigger_runtime_work_loop() -> None:
     assert "tool_invocation_requested" not in event_types
     assert "tool_execution_started" not in event_types
     assert "runtime_task_started" not in event_types
+
+
+def test_planner_plan_endpoint_uses_canonical_session_input(monkeypatch) -> None:
+    client = TestClient(app)
+    session = runtime_session_service.create_session("canonical-route-task")
+    register_registry_tool("shell.read")
+    adapter = RecordingPlannerAdapter()
+
+    from app.routes import planner as planner_routes
+
+    monkeypatch.setattr(planner_routes.planner_service, "_adapter", adapter)
+
+    response = client.post(
+        "/planner/plan",
+        json={
+            "session_id": session.id,
+            "objective": "Use canonical state",
+        },
+    )
+
+    assert response.status_code == 200
+    assert adapter.request is not None
+    assert adapter.request.task_id == "canonical-route-task"
+    assert adapter.request.context["context_source"] == "planning_context"
+    assert (
+        adapter.request.context["planning_context"]["task_id"]
+        == "canonical-route-task"
+    )
+    assert adapter.request.cognitive_state is not None
+    assert adapter.request.cognitive_state.session_id == session.id
+    assert adapter.request.cognitive_state.task_id == "canonical-route-task"
+
+
+def test_planner_plan_endpoint_rejects_caller_context() -> None:
+    client = TestClient(app)
+    session = runtime_session_service.create_session("reject-route-context-task")
+
+    response = client.post(
+        "/planner/plan",
+        json={
+            "session_id": session.id,
+            "objective": "Reject caller context",
+            "context": {
+                "context_source": "caller",
+                "planning_context": {"task_id": "forged-task"},
+            },
+            "cognitive_state": {
+                "session_id": "forged-session",
+                "task_id": "forged-task",
+            },
+        },
+    )
+
+    assert response.status_code == 422
 
 
 class RecordingPlannerAdapter(PlannerAdapter):
@@ -437,7 +540,12 @@ def test_runtime_planner_proposal_stores_planner_details() -> None:
     assert proposal_body["session_id"] == session["id"]
     assert proposal_body["task_id"] == "task-with-details"
     assert proposal_body["objective"] == "Capture planner details"
-    assert proposal_body["context"] == {"path": "README.md"}
+    assert proposal_body["context"]["context_source"] == "planning_context"
+    assert proposal_body["context"]["planning_context"]["session_id"] == session["id"]
+    assert proposal_body["context"]["planning_context"]["task_id"] == (
+        "task-with-details"
+    )
+    assert "path" not in proposal_body["context"]
     assert proposal_body["proposed_tool"]["id"] == tool_record["id"]
     assert proposal_body["proposed_tool"]["name"] == "shell.read"
     assert proposal_body["planner_rationale"] == (
