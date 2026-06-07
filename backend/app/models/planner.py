@@ -3,6 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.models.cognitive_state import CognitiveState
 from app.models.proposal import Proposal
 from app.models.tool import Tool
 
@@ -19,6 +20,7 @@ class PlannerRequest(BaseModel):
     objective: str = Field(min_length=1)
     available_tools: list[Tool]
     context: dict[str, Any] = Field(default_factory=dict)
+    cognitive_state: CognitiveState | None = None
 
 
 class PlannerPreviewRequest(BaseModel):

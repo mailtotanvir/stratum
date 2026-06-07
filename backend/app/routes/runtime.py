@@ -11,6 +11,12 @@ from app.db.schema import (
     ToolRecord,
 )
 from app.models.artifact import Artifact
+from app.models.cognitive_state import CognitiveState
+from app.models.decision_evidence import (
+    DecisionEvidence,
+    DecisionEvidenceCreate,
+)
+from app.models.decision_record import DecisionRecord, DecisionRecordCreate
 from app.models.planner import (
     PlannerPreviewRequest,
     PlannerProposalPreviewResponse,
@@ -34,12 +40,22 @@ from app.models.tool import Tool, ToolParameter
 from app.runtime.python_async_runtime import python_async_runtime
 from app.runtime.work_loop import work_loop_service
 from app.services.artifact_service import ArtifactNotFoundError, artifact_service
+from app.services.cognitive_state_service import cognitive_state_service
+from app.services.decision_evidence_service import decision_evidence_service
+from app.services.decision_record_service import (
+    DecisionRecordEntityMismatchError,
+    DecisionRecordNotFoundError,
+    decision_record_service,
+)
 from app.services.event_service import event_service
 from app.services.governance_service import governance_service
 from app.services.planner_recommendation_service import (
     InvalidPlannerRecommendationTransitionError,
     PlannerRecommendationNotFoundError,
     planner_recommendation_service,
+)
+from app.services.planner_input_builder_service import (
+    planner_input_builder_service,
 )
 from app.services.planner_service import planner_service
 from app.services.planning_context_service import planning_context_service
@@ -173,6 +189,30 @@ def to_planner_recommendation(record) -> PlannerRecommendation:
     )
 
 
+def to_decision_record(record) -> DecisionRecord:
+    return DecisionRecord(
+        decision_id=record.decision_id,
+        session_id=record.session_id,
+        task_id=record.task_id,
+        decision_type=record.decision_type,
+        selected_entity_id=record.selected_entity_id,
+        selected_entity_type=record.selected_entity_type,
+        rationale=record.rationale,
+        created_at=record.created_at.isoformat(),
+    )
+
+
+def to_decision_evidence(record) -> DecisionEvidence:
+    return DecisionEvidence(
+        evidence_id=record.evidence_id,
+        decision_id=record.decision_id,
+        evidence_type=record.evidence_type,
+        evidence_reference=record.evidence_reference,
+        summary=record.summary,
+        created_at=record.created_at.isoformat(),
+    )
+
+
 def planner_request_for_session(
     session_id: str,
     request: PlannerPreviewRequest,
@@ -189,27 +229,6 @@ def planner_request_for_session(
         objective=request.objective,
         available_tools=available_tools,
         context=request.context,
-    )
-
-
-def planner_request_from_planning_context(
-    session_id: str,
-    objective: str,
-) -> tuple[PlannerRequest, PlanningContext]:
-    planning_context = planning_context_service.build(session_id)
-
-    return (
-        PlannerRequest(
-            task_id=planning_context.task_id,
-            session_id=planning_context.session_id,
-            objective=objective,
-            available_tools=planning_context.available_tools,
-            context={
-                "context_source": "planning_context",
-                "planning_context": planning_context.model_dump(mode="json"),
-            },
-        ),
-        planning_context,
     )
 
 
@@ -261,13 +280,21 @@ def get_planning_context(session_id: str) -> PlanningContext:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/runtime/sessions/{session_id}/cognitive-state")
+def get_cognitive_state(session_id: str) -> CognitiveState:
+    try:
+        return cognitive_state_service.build(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/runtime/sessions/{session_id}/planner-preview")
 async def planner_preview(
     session_id: str,
     request: PlannerPreviewRequest,
 ) -> PlannerResponse:
     try:
-        planner_request, _ = planner_request_from_planning_context(
+        planner_request = planner_input_builder_service.build(
             session_id,
             request.objective,
         )
@@ -283,7 +310,7 @@ async def planner_proposal_preview(
     request: PlannerPreviewRequest,
 ) -> PlannerProposalPreviewResponse:
     try:
-        planner_request, _ = planner_request_from_planning_context(
+        planner_request = planner_input_builder_service.build(
             session_id,
             request.objective,
         )
@@ -306,7 +333,7 @@ async def create_planner_recommendation(
     request: PlannerPreviewRequest,
 ) -> PlannerRecommendationResponse:
     try:
-        planner_request, planning_context = planner_request_from_planning_context(
+        planner_request = planner_input_builder_service.build(
             session_id,
             request.objective,
         )
@@ -315,6 +342,9 @@ async def create_planner_recommendation(
 
     planner_response = await planner_service.plan(planner_request)
     governance_preview = governance_service.preview_decision()
+    planning_context = PlanningContext.model_validate(
+        planner_request.context["planning_context"]
+    )
     recommendation = await planner_recommendation_service.create_recommendation_async(
         planner_request=planner_request,
         planner_response=planner_response,
@@ -347,6 +377,68 @@ def list_planner_recommendations(
             session_id,
             status=status.value if status is not None else None,
         )
+    ]
+
+
+@router.post("/runtime/sessions/{session_id}/decision-records")
+def create_decision_record(
+    session_id: str,
+    request: DecisionRecordCreate,
+) -> DecisionRecord:
+    try:
+        record = decision_record_service.create_decision_record(
+            session_id=session_id,
+            decision_type=request.decision_type,
+            selected_entity_id=request.selected_entity_id,
+            rationale=request.rationale,
+        )
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlannerRecommendationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DecisionRecordEntityMismatchError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return to_decision_record(record)
+
+
+@router.get("/runtime/sessions/{session_id}/decision-records")
+def list_decision_records(session_id: str) -> list[DecisionRecord]:
+    try:
+        runtime_session_service.get_session(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [
+        to_decision_record(record)
+        for record in decision_record_service.list_decision_records(session_id)
+    ]
+
+
+@router.post("/decision-records/{decision_id}/evidence")
+def create_decision_evidence(
+    decision_id: str,
+    request: DecisionEvidenceCreate,
+) -> DecisionEvidence:
+    try:
+        record = decision_evidence_service.create_evidence(
+            decision_id=decision_id,
+            evidence_type=request.evidence_type,
+            evidence_reference=request.evidence_reference,
+            summary=request.summary,
+        )
+    except DecisionRecordNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return to_decision_evidence(record)
+
+
+@router.get("/decision-records/{decision_id}/evidence")
+def list_decision_evidence(decision_id: str) -> list[DecisionEvidence]:
+    try:
+        decision_record_service.get_decision_record(decision_id)
+    except DecisionRecordNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [
+        to_decision_evidence(record)
+        for record in decision_evidence_service.list_evidence(decision_id)
     ]
 
 

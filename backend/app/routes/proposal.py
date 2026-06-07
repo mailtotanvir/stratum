@@ -2,10 +2,12 @@ from fastapi import APIRouter, HTTPException
 
 from app.db.schema import ArtifactRecord, ProposalArtifactLinkRecord, ProposalRecord
 from app.models.artifact import Artifact
+from app.models.decision_trail import DecisionTrail
 from app.models.proposal import Proposal, ProposalCreate, ProposalRespond
 from app.models.proposal_artifact import ProposalArtifact, ProposalArtifactAttachment
 from app.services.artifact_service import ArtifactNotFoundError, artifact_service
 from app.services.event_service import event_service
+from app.services.decision_trail_service import decision_trail_service
 from app.services.proposal_artifact_service import (
     ProposalArtifactAlreadyAttachedError,
     proposal_artifact_service,
@@ -100,6 +102,15 @@ def proposal_trace(
             limit=limit,
         )
     ]
+
+
+@router.get("/proposals/{proposal_id}/decision-trail")
+def proposal_decision_trail(proposal_id: str) -> DecisionTrail:
+    try:
+        proposal_service.get_proposal(proposal_id)
+    except ProposalNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return decision_trail_service.reconstruct(proposal_id)
 
 
 @router.get("/proposals/{proposal_id}")

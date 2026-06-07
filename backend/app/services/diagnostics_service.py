@@ -8,7 +8,16 @@ from app.models.planning_context_snapshot import (
 from app.models.planner import PlannerRecommendationStatus
 from app.models.runtime_event import EventType, Severity
 from app.models.task import TaskStatus
+from app.services.decision_evidence_service import (
+    DecisionEvidenceService,
+    decision_evidence_service,
+)
+from app.services.decision_trail_service import DecisionTrailService
 from app.services.event_service import EventService, event_service
+from app.services.decision_record_service import (
+    DecisionRecordService,
+    decision_record_service,
+)
 from app.services.governance_service import (
     GovernanceService,
     classify_governance_status,
@@ -49,6 +58,9 @@ class DiagnosticsService:
         tasks: TaskService | None = None,
         proposals: ProposalService | None = None,
         recommendations: PlannerRecommendationService | None = None,
+        decisions: DecisionRecordService | None = None,
+        decision_evidence: DecisionEvidenceService | None = None,
+        decision_trails: DecisionTrailService | None = None,
         reconstruction: ReconstructionService | None = None,
         governance: GovernanceService | None = None,
     ) -> None:
@@ -56,12 +68,17 @@ class DiagnosticsService:
         self._tasks = tasks or task_service
         self._proposals = proposals or proposal_service
         self._recommendations = recommendations or planner_recommendation_service
+        self._decisions = decisions or decision_record_service
+        self._decision_evidence = decision_evidence or decision_evidence_service
         self._governance = governance or GovernanceService(self._events)
         self._reconstruction = reconstruction or ReconstructionService(
             events=self._events,
             tasks=self._tasks,
             proposals=self._proposals,
             recommendations=self._recommendations,
+        )
+        self._decision_trails = decision_trails or DecisionTrailService(
+            self._reconstruction
         )
 
     def event_store_health(self) -> dict[str, Any]:
@@ -320,16 +337,107 @@ class DiagnosticsService:
             "consistency": consistency,
         }
 
+    def decision_record_health(self) -> dict[str, Any]:
+        records = self._decisions.list_decision_records()
+        counts_by_type: dict[str, int] = {}
+        for record in records:
+            counts_by_type[record.decision_type] = (
+                counts_by_type.get(record.decision_type, 0) + 1
+            )
+        return {
+            "decision_record_count": len(records),
+            "decision_record_counts_by_type": counts_by_type,
+        }
+
+    def decision_evidence_health(self) -> dict[str, Any]:
+        records = self._decision_evidence.list_evidence()
+        counts_by_type: dict[str, int] = {}
+        for record in records:
+            counts_by_type[record.evidence_type] = (
+                counts_by_type.get(record.evidence_type, 0) + 1
+            )
+        return {
+            "decision_evidence_count": len(records),
+            "decision_evidence_counts_by_type": counts_by_type,
+        }
+
+    def decision_trail_health(self) -> dict[str, Any]:
+        issues: list[dict[str, str | None]] = []
+        complete_count = 0
+        proposals = self._proposals.list_proposals()
+        for proposal in proposals:
+            trail = self._decision_trails.reconstruct(proposal.id)
+            recommendation_id = trail.recommendation_id
+            recommendation_found = (
+                recommendation_id is not None
+                and self._reconstruction.get_recommendation_lineage(
+                    recommendation_id
+                ).get("found")
+            )
+            if not recommendation_found:
+                issues.append(
+                    {
+                        "issue_type": "proposal_missing_recommendation_source",
+                        "proposal_id": proposal.id,
+                        "recommendation_id": recommendation_id,
+                        "decision_id": None,
+                    }
+                )
+                continue
+            if trail.decision_id is None:
+                issues.append(
+                    {
+                        "issue_type": "recommendation_missing_decision_record",
+                        "proposal_id": proposal.id,
+                        "recommendation_id": recommendation_id,
+                        "decision_id": None,
+                    }
+                )
+                continue
+            if not trail.evidence_ids:
+                issues.append(
+                    {
+                        "issue_type": "decision_record_missing_evidence",
+                        "proposal_id": proposal.id,
+                        "recommendation_id": recommendation_id,
+                        "decision_id": trail.decision_id,
+                    }
+                )
+                continue
+            complete_count += 1
+
+        total = len(proposals)
+        return {
+            "proposals_with_decision_trails": complete_count,
+            "proposals_missing_decision_trails": total - complete_count,
+            "decision_trail_completeness": (
+                complete_count / total if total else 1.0
+            ),
+            "decision_trail_issues": issues,
+        }
+
     def runtime_summary(self) -> dict[str, Any]:
         event_health = self.event_store_health()
         task_health = self._task_health()
         proposal_health = self.proposal_health()
         recommendation_health = self.planner_recommendation_health()
+        decision_record_health = self.decision_record_health()
+        decision_evidence_health = self.decision_evidence_health()
+        decision_trail_health = self.decision_trail_health()
         governance_health = self.governance_health()
         task_consistency = self._reconstruction.task_consistency_health()
         proposal_consistency = self._reconstruction.proposal_consistency_health()
 
         return {
+            "decision_record_count": decision_record_health[
+                "decision_record_count"
+            ],
+            "decision_evidence_count": decision_evidence_health[
+                "decision_evidence_count"
+            ],
+            "decision_trail_count": decision_trail_health[
+                "proposals_with_decision_trails"
+            ],
             "events": {
                 "total_events": event_health["total_events"],
                 "latest_event_timestamp": event_health["latest_event_timestamp"],

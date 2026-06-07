@@ -785,6 +785,9 @@ def test_diagnostics_summary_empty(tmp_path) -> None:
     _, _, _, service = make_diagnostics_services(tmp_path)
 
     assert service.runtime_summary() == {
+        "decision_record_count": 0,
+        "decision_evidence_count": 0,
+        "decision_trail_count": 0,
         "events": {
             "total_events": 0,
             "latest_event_timestamp": None,
@@ -937,6 +940,9 @@ def test_diagnostics_summary_includes_existing_top_level_fields(tmp_path) -> Non
     _, _, _, service = make_diagnostics_services(tmp_path)
 
     assert set(service.runtime_summary()) == {
+        "decision_record_count",
+        "decision_evidence_count",
+        "decision_trail_count",
         "events",
         "tasks",
         "proposals",

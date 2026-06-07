@@ -166,6 +166,30 @@ class PlannerRecommendationRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class DecisionRecordRecord(Base):
+    __tablename__ = "decision_records"
+
+    decision_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    session_id: Mapped[str] = mapped_column(Text, index=True)
+    task_id: Mapped[str] = mapped_column(Text, index=True)
+    decision_type: Mapped[str] = mapped_column(Text, index=True)
+    selected_entity_id: Mapped[str] = mapped_column(Text, index=True)
+    selected_entity_type: Mapped[str] = mapped_column(Text, index=True)
+    rationale: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class DecisionEvidenceRecord(Base):
+    __tablename__ = "decision_evidence"
+
+    evidence_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    decision_id: Mapped[str] = mapped_column(Text, index=True)
+    evidence_type: Mapped[str] = mapped_column(Text, index=True)
+    evidence_reference: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class ProposalRecord(Base):
     __tablename__ = "proposals"
 

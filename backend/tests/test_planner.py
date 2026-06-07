@@ -260,6 +260,10 @@ def test_runtime_planner_preview_uses_session_task_id_and_available_tools(
     assert adapter.request.session_id == session["id"]
     assert adapter.request.objective == "Inspect available tools"
     assert adapter.request.context["context_source"] == "planning_context"
+    assert adapter.request.cognitive_state is not None
+    assert adapter.request.cognitive_state.session_id == session["id"]
+    assert adapter.request.cognitive_state.task_id == "task-from-session"
+    assert adapter.request.cognitive_state.available_tool_count == 2
     planning_context = adapter.request.context["planning_context"]
     assert planning_context["session_id"] == session["id"]
     assert planning_context["task_id"] == "task-from-session"
@@ -319,7 +323,9 @@ def test_runtime_planner_preview_emits_planner_events() -> None:
     assert planner_events[0]["metadata"]["available_tool_count"] == 1
     assert planner_events[0]["metadata"]["active_proposal_count"] == 0
     assert planner_events[0]["metadata"]["active_recommendation_count"] == 0
+    assert planner_events[0]["metadata"]["cognitive_health"] == "healthy"
     assert "planning_context" not in planner_events[0]["metadata"]
+    assert "cognitive_state" not in planner_events[0]["metadata"]
     assert planner_events[1]["metadata"]["proposed_tool_name"] == "shell.read"
 
 
@@ -859,6 +865,8 @@ def test_runtime_planner_recommendation_uses_planning_context_service(
     assert built_session_ids == [session["id"]]
     assert adapter.request is not None
     assert adapter.request.objective == "Use derived recommendation context"
+    assert adapter.request.cognitive_state is not None
+    assert adapter.request.cognitive_state.active_proposal_count == 1
     planning_context = adapter.request.context["planning_context"]
     assert planning_context["active_proposals"][0]["title"] == (
         "Existing proposal"

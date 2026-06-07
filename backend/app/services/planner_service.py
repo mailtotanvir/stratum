@@ -21,6 +21,20 @@ class PlannerService:
             "objective": request.objective,
             "available_tool_count": len(request.available_tools),
         }
+        if request.cognitive_state is not None:
+            event_metadata.update(
+                {
+                    "cognitive_health": (
+                        request.cognitive_state.cognitive_health.value
+                    ),
+                    "active_recommendation_count": (
+                        request.cognitive_state.active_recommendation_count
+                    ),
+                    "active_proposal_count": (
+                        request.cognitive_state.active_proposal_count
+                    ),
+                }
+            )
         planning_context = request.context.get("planning_context")
         if (
             request.context.get("context_source") == "planning_context"
@@ -33,18 +47,23 @@ class PlannerService:
             event_metadata.update(
                 {
                     "context_source": "planning_context",
-                    "active_proposal_count": (
-                        len(active_proposals)
-                        if isinstance(active_proposals, list)
-                        else 0
-                    ),
-                    "active_recommendation_count": (
-                        len(active_recommendations)
-                        if isinstance(active_recommendations, list)
-                        else 0
-                    ),
                 }
             )
+            if request.cognitive_state is None:
+                event_metadata.update(
+                    {
+                        "active_proposal_count": (
+                            len(active_proposals)
+                            if isinstance(active_proposals, list)
+                            else 0
+                        ),
+                        "active_recommendation_count": (
+                            len(active_recommendations)
+                            if isinstance(active_recommendations, list)
+                            else 0
+                        ),
+                    }
+                )
 
         await self._events.emit_event(
             event_type=EventType.PLANNER_REQUESTED,

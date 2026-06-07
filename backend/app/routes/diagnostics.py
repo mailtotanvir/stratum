@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from app.services.cognitive_state_service import cognitive_state_service
 from app.services.diagnostics_service import diagnostics_service
 
 router = APIRouter()
@@ -20,6 +21,26 @@ def proposal_diagnostics() -> dict[str, Any]:
 @router.get("/diagnostics/planner-recommendations")
 def planner_recommendation_diagnostics() -> dict[str, Any]:
     return diagnostics_service.planner_recommendation_health()
+
+
+@router.get("/diagnostics/decision-records")
+def decision_record_diagnostics() -> dict[str, Any]:
+    return diagnostics_service.decision_record_health()
+
+
+@router.get("/diagnostics/decision-evidence")
+def decision_evidence_diagnostics() -> dict[str, Any]:
+    return diagnostics_service.decision_evidence_health()
+
+
+@router.get("/diagnostics/decision-trails")
+def decision_trail_diagnostics() -> dict[str, Any]:
+    return diagnostics_service.decision_trail_health()
+
+
+@router.get("/diagnostics/cognitive-state")
+def cognitive_state_diagnostics() -> dict[str, object]:
+    return cognitive_state_service.diagnostics()
 
 
 @router.get("/diagnostics/governance")

@@ -54,6 +54,8 @@ class EventType(StrEnum):
     PLANNER_RECOMMENDATION_CREATED = "planner_recommendation_created"
     PLANNER_RECOMMENDATION_PROMOTED = "planner_recommendation_promoted"
     PLANNER_RECOMMENDATION_DISMISSED = "planner_recommendation_dismissed"
+    DECISION_RECORD_CREATED = "decision_record_created"
+    DECISION_EVIDENCE_CREATED = "decision_evidence_created"
     WORK_LOOP_STARTED = "work_loop_started"
     WORK_LOOP_COMPLETED = "work_loop_completed"
     WORK_LOOP_FAILED = "work_loop_failed"

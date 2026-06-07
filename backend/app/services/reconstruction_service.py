@@ -29,6 +29,14 @@ PLANNER_RECOMMENDATION_EVENTS = {
     EventType.PLANNER_RECOMMENDATION_DISMISSED.value,
 }
 
+DECISION_RECORD_EVENTS = {
+    EventType.DECISION_RECORD_CREATED.value,
+}
+
+DECISION_EVIDENCE_EVENTS = {
+    EventType.DECISION_EVIDENCE_CREATED.value,
+}
+
 
 class ReconstructionService:
     def __init__(
@@ -212,6 +220,201 @@ class ReconstructionService:
             ),
             "lifecycle_issues": lifecycle_issues,
         }
+
+    def reconstruct_decision_records(
+        self,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        decisions = []
+        counts_by_type: dict[str, int] = {}
+        for event in self._events.list_persisted_events():
+            if event.type.value not in DECISION_RECORD_EVENTS:
+                continue
+            if (
+                session_id is not None
+                and event.metadata.get("session_id") != session_id
+            ):
+                continue
+
+            decision = {
+                field: event.metadata.get(field)
+                for field in [
+                    "decision_id",
+                    "session_id",
+                    "task_id",
+                    "decision_type",
+                    "selected_entity_id",
+                    "selected_entity_type",
+                    "rationale",
+                    "created_at",
+                ]
+            }
+            if decision["created_at"] is None:
+                decision["created_at"] = event.ts
+            decisions.append(decision)
+
+            decision_type = decision["decision_type"]
+            if isinstance(decision_type, str):
+                counts_by_type[decision_type] = (
+                    counts_by_type.get(decision_type, 0) + 1
+                )
+
+        decisions.sort(
+            key=lambda decision: (
+                str(decision["created_at"]),
+                str(decision["decision_id"]),
+            )
+        )
+        return {
+            "decisions": decisions,
+            "decision_counts_by_type": counts_by_type,
+        }
+
+    def reconstruct_decision_evidence(
+        self,
+        decision_id: str | None = None,
+    ) -> dict[str, Any]:
+        evidence_by_decision: dict[str, list[dict[str, Any]]] = {}
+        counts_by_type: dict[str, int] = {}
+        for event in self._events.list_persisted_events():
+            if event.type.value not in DECISION_EVIDENCE_EVENTS:
+                continue
+            event_decision_id = event.metadata.get("decision_id")
+            if not isinstance(event_decision_id, str):
+                continue
+            if decision_id is not None and event_decision_id != decision_id:
+                continue
+
+            evidence = {
+                field: event.metadata.get(field)
+                for field in [
+                    "evidence_id",
+                    "decision_id",
+                    "evidence_type",
+                    "evidence_reference",
+                    "summary",
+                    "created_at",
+                ]
+            }
+            if evidence["created_at"] is None:
+                evidence["created_at"] = event.ts
+            evidence_by_decision.setdefault(event_decision_id, []).append(
+                evidence
+            )
+
+            evidence_type = evidence["evidence_type"]
+            if isinstance(evidence_type, str):
+                counts_by_type[evidence_type] = (
+                    counts_by_type.get(evidence_type, 0) + 1
+                )
+
+        for records in evidence_by_decision.values():
+            records.sort(
+                key=lambda evidence: (
+                    str(evidence["created_at"]),
+                    str(evidence["evidence_id"]),
+                )
+            )
+        return {
+            "evidence_by_decision": evidence_by_decision,
+            "evidence_count": sum(
+                len(records) for records in evidence_by_decision.values()
+            ),
+            "evidence_counts_by_type": counts_by_type,
+        }
+
+    def reconstruct_decision_trail(self, proposal_id: str) -> dict[str, Any]:
+        proposal = self.reconstruct_proposal_state(proposal_id)
+        if not proposal.get("found"):
+            return {
+                "proposal_id": proposal_id,
+                "recommendation_id": None,
+                "decision_id": None,
+                "evidence_ids": [],
+                "source_type": "manual",
+                "created_at": None,
+            }
+
+        source_type = proposal.get("source_type", "manual")
+        recommendation_id = (
+            proposal.get("source_id")
+            if source_type == "planner_recommendation"
+            and isinstance(proposal.get("source_id"), str)
+            else None
+        )
+        decision = self._decision_for_recommendation(
+            recommendation_id,
+            proposal.get("created_at"),
+        )
+        decision_id = (
+            decision.get("decision_id") if decision is not None else None
+        )
+        evidence_ids: list[str] = []
+        if isinstance(decision_id, str):
+            reconstructed_evidence = self.reconstruct_decision_evidence(
+                decision_id
+            )
+            evidence_ids = [
+                evidence["evidence_id"]
+                for evidence in reconstructed_evidence[
+                    "evidence_by_decision"
+                ].get(decision_id, [])
+                if isinstance(evidence.get("evidence_id"), str)
+            ]
+
+        return {
+            "proposal_id": proposal_id,
+            "recommendation_id": recommendation_id,
+            "decision_id": decision_id,
+            "evidence_ids": evidence_ids,
+            "source_type": source_type,
+            "created_at": proposal.get("created_at"),
+        }
+
+    def reconstruct_all_decision_trails(self) -> list[dict[str, Any]]:
+        return [
+            self.reconstruct_decision_trail(proposal["id"])
+            for proposal in self.reconstruct_all_proposal_states()
+            if isinstance(proposal.get("id"), str)
+        ]
+
+    def _decision_for_recommendation(
+        self,
+        recommendation_id: str | None,
+        proposal_created_at: object,
+    ) -> dict[str, Any] | None:
+        if recommendation_id is None:
+            return None
+        decisions = [
+            decision
+            for decision in self.reconstruct_decision_records()["decisions"]
+            if decision.get("selected_entity_id") == recommendation_id
+            and decision.get("selected_entity_type") == "planner_recommendation"
+        ]
+        if not decisions:
+            return None
+
+        before_proposal = [
+            decision
+            for decision in decisions
+            if isinstance(proposal_created_at, str)
+            and isinstance(decision.get("created_at"), str)
+            and decision["created_at"] <= proposal_created_at
+        ]
+        candidates = (
+            before_proposal
+            if isinstance(proposal_created_at, str)
+            else decisions
+        )
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda decision: (
+                str(decision.get("created_at")),
+                str(decision.get("decision_id")),
+            ),
+        )
 
     def _reconstruct_states(self) -> dict[str, dict[str, Any]]:
         states: dict[str, dict[str, Any]] = {}
