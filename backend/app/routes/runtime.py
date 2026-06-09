@@ -35,6 +35,7 @@ from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskAr
 from app.models.runtime_execution import RuntimeExecution
 from app.models.runtime_event import EventType
 from app.models.runtime_session import RuntimeSession
+from app.models.session_decision_projection import SessionDecisionProjection
 from app.models.tool import Tool, ToolParameter
 from app.runtime.python_async_runtime import python_async_runtime
 from app.runtime.work_loop import work_loop_service
@@ -74,6 +75,9 @@ from app.services.runtime_execution_service import (
 from app.services.runtime_session_service import (
     RuntimeSessionNotFoundError,
     runtime_session_service,
+)
+from app.services.session_decision_projection_builder_service import (
+    session_decision_projection_builder_service,
 )
 from app.services.tool_execution_service import ToolDisabledError
 from app.services.tool_registry_service import ToolNotFoundError, tool_registry_service
@@ -264,6 +268,16 @@ def get_planning_context(session_id: str) -> PlanningContext:
 def get_cognitive_state(session_id: str) -> CognitiveState:
     try:
         return cognitive_state_service.build(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/runtime/sessions/{session_id}/decision-projections")
+def get_decision_projections(
+    session_id: str,
+) -> SessionDecisionProjection:
+    try:
+        return session_decision_projection_builder_service.build(session_id)
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
