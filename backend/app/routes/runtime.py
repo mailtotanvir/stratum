@@ -37,6 +37,7 @@ from app.models.runtime_event import EventType
 from app.models.runtime_session import RuntimeSession
 from app.models.session_decision_projection import SessionDecisionProjection
 from app.models.tool import Tool, ToolParameter
+from app.runtime.projection_registry import projection_registry
 from app.runtime.python_async_runtime import python_async_runtime
 from app.runtime.work_loop import work_loop_service
 from app.services.artifact_service import ArtifactNotFoundError, artifact_service
@@ -92,6 +93,10 @@ class RuntimeReasonRequest(BaseModel):
 class RuntimeWorkRequest(BaseModel):
     tool_name: str
     input_payload: dict | None = None
+
+
+class RuntimeProjectionTypes(BaseModel):
+    projection_types: list[str]
 
 
 def to_runtime_execution(record: RuntimeExecutionRecord) -> RuntimeExecution:
@@ -246,6 +251,13 @@ def list_runtime_sessions(task_id: str | None = None) -> list[RuntimeSession]:
         to_runtime_session(record)
         for record in runtime_session_service.list_sessions(task_id=task_id)
     ]
+
+
+@router.get("/runtime/projections")
+def list_runtime_projection_types() -> RuntimeProjectionTypes:
+    return RuntimeProjectionTypes(
+        projection_types=projection_registry.list_projection_types()
+    )
 
 
 @router.get("/runtime/sessions/{session_id}")
