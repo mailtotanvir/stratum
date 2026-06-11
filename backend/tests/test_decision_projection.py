@@ -1,14 +1,20 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.planner import PlannerRequest, PlannerResponse
+from app.models.projection import Projection
 from app.models.tool import Tool
+from app.services.base_projection_builder import BaseProjectionBuilder
 from app.services.decision_evidence_service import (
     DecisionEvidenceService,
     decision_evidence_service,
 )
 from app.services.decision_projection_builder_service import (
+    DECISION_PROJECTION_SCHEMA_VERSION,
     DECISION_PROJECTION_SOURCE,
+    DECISION_PROJECTION_TYPE,
     DecisionProjectionBuilderService,
     decision_projection_builder_service,
 )
@@ -43,7 +49,7 @@ def projection_tool() -> Tool:
     )
 
 
-def make_projection_fixture(tmp_path):
+def make_projection_fixture(tmp_path, clock=None):
     trace_path = tmp_path / "trace.db"
     events = EventService(TraceService(trace_path))
     sessions = RuntimeSessionService(tmp_path / "sessions.db")
@@ -77,6 +83,7 @@ def make_projection_fixture(tmp_path):
         trails=trails,
         recommendations=recommendations,
         events=events,
+        clock=clock,
     )
 
     session = sessions.create_session("decision-projection-task")
@@ -178,18 +185,80 @@ def evidence_state(record) -> tuple:
     )
 
 
-def test_decision_projection_build_is_deterministic_and_recreates_instances(
+def without_projection_metadata(value):
+    if isinstance(value, list):
+        return [without_projection_metadata(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: without_projection_metadata(item)
+            for key, item in value.items()
+            if key != "metadata"
+        }
+    return value
+
+
+def test_decision_projection_builder_satisfies_common_contract(tmp_path) -> None:
+    fixture = make_projection_fixture(tmp_path)
+
+    assert isinstance(fixture["builder"], BaseProjectionBuilder)
+    assert all(
+        isinstance(projection, Projection)
+        for projection in fixture["builder"].build(fixture["session"].id)
+    )
+
+
+def test_decision_projection_build_is_stable_and_recreates_instances(
     tmp_path,
 ) -> None:
-    fixture = make_projection_fixture(tmp_path)
+    first_built_at = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
+    build_times = iter(
+        [first_built_at, first_built_at + timedelta(minutes=1)]
+    )
+    fixture = make_projection_fixture(tmp_path, clock=lambda: next(build_times))
 
     first = fixture["builder"].build(fixture["session"].id)
     second = fixture["builder"].build(fixture["session"].id)
 
-    assert first == second
+    assert without_projection_metadata(
+        [projection.model_dump(mode="json") for projection in first]
+    ) == without_projection_metadata(
+        [projection.model_dump(mode="json") for projection in second]
+    )
     assert first is not second
     assert first[0] is not second[0]
+    assert first[0].metadata is not second[0].metadata
+    assert first[0].metadata.built_at == first_built_at
+    assert second[0].metadata.built_at == first_built_at + timedelta(minutes=1)
+    assert first[0].metadata.projection_type == DECISION_PROJECTION_TYPE
+    assert (
+        first[0].metadata.builder_name
+        == "DecisionProjectionBuilderService"
+    )
+    assert first[0].metadata.source == DECISION_PROJECTION_SOURCE
+    assert (
+        first[0].metadata.schema_version
+        == DECISION_PROJECTION_SCHEMA_VERSION
+    )
+    assert first[0].metadata.reconstruction.model_dump() == {
+        "projection_type": DECISION_PROJECTION_TYPE,
+        "reconstruction_source": "runtime_session_state",
+        "rebuildable": True,
+        "authoritative_source": "runtime_session",
+    }
     assert first[0].model_dump(mode="json") == {
+        "metadata": {
+            "projection_type": DECISION_PROJECTION_TYPE,
+            "builder_name": "DecisionProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": DECISION_PROJECTION_TYPE,
+                "reconstruction_source": "runtime_session_state",
+                "rebuildable": True,
+                "authoritative_source": "runtime_session",
+            },
+            "built_at": "2026-06-10T12:00:00Z",
+            "source": DECISION_PROJECTION_SOURCE,
+            "schema_version": DECISION_PROJECTION_SCHEMA_VERSION,
+        },
         "decision_id": fixture["decision"].decision_id,
         "recommendation_id": fixture["recommendation"].id,
         "status": "promoted",
@@ -328,8 +397,10 @@ def test_decision_projection_endpoint_rebuilds_read_only_summaries() -> None:
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert first.json() == second.json()
-    assert first.json() == {
+    assert without_projection_metadata(first.json()) == (
+        without_projection_metadata(second.json())
+    )
+    assert without_projection_metadata(first.json()) == {
         "session_id": session.id,
         "projection_count": 1,
         "selected_decision_count": 1,
@@ -404,9 +475,15 @@ def test_builder_and_endpoint_reconstruct_equivalent_projection_summaries() -> N
     assert second_response.status_code == 200
     first = first_response.json()
     second = second_response.json()
-    assert direct_before == first["projections"]
-    assert first["projections"] == second["projections"]
-    assert second["projections"] == direct_after
+    assert without_projection_metadata(direct_before) == (
+        without_projection_metadata(first["projections"])
+    )
+    assert without_projection_metadata(first["projections"]) == (
+        without_projection_metadata(second["projections"])
+    )
+    assert without_projection_metadata(second["projections"]) == (
+        without_projection_metadata(direct_after)
+    )
     assert first["projection_count"] == len(direct_before)
     assert second["projection_count"] == len(direct_after)
     assert first["selected_decision_count"] == 1
@@ -416,6 +493,7 @@ def test_builder_and_endpoint_reconstruct_equivalent_projection_summaries() -> N
     assert second["pending_decision_count"] == 0
     assert second["rejected_decision_count"] == 0
     assert set(first["projections"][0]) == {
+        "metadata",
         "decision_id",
         "recommendation_id",
         "status",
@@ -432,7 +510,9 @@ def test_builder_and_endpoint_reconstruct_equivalent_projection_summaries() -> N
         event_type="session_decision_projection_built"
     )
     assert len(session_build_events) == 2
-    assert direct_before == direct_after
+    assert without_projection_metadata(direct_before) == (
+        without_projection_metadata(direct_after)
+    )
 
     response_text = first_response.text
     assert evidence.evidence_id not in response_text

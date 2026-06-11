@@ -1,9 +1,8 @@
-from pydantic import BaseModel
-
 from app.models.decision_projection import DecisionProjection
+from app.models.projection import Projection
 
 
-class SessionDecisionProjection(BaseModel):
+class SessionDecisionProjection(Projection):
     session_id: str
     projection_count: int
     selected_decision_count: int

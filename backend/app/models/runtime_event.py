@@ -59,6 +59,7 @@ class EventType(StrEnum):
     DECISION_EVIDENCE_CREATED = "decision_evidence_created"
     DECISION_PROJECTION_BUILT = "decision_projection_built"
     SESSION_DECISION_PROJECTION_BUILT = "session_decision_projection_built"
+    PROJECTION_REGISTRY_INSPECTED = "projection_registry_inspected"
     WORK_LOOP_STARTED = "work_loop_started"
     WORK_LOOP_COMPLETED = "work_loop_completed"
     WORK_LOOP_FAILED = "work_loop_failed"

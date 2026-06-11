@@ -1,9 +1,8 @@
-from pydantic import BaseModel
-
 from app.models.planner import PlannerRecommendationStatus
+from app.models.projection import Projection
 
 
-class DecisionProjection(BaseModel):
+class DecisionProjection(Projection):
     decision_id: str
     recommendation_id: str
     status: PlannerRecommendationStatus

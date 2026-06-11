@@ -1,3 +1,8 @@
+from app.models.projection import ProjectionSchemaInfo
+from app.runtime.projection_contract_validator import (
+    ProjectionContractError,
+    validate_projection_contract,
+)
 from app.services.base_projection_builder import BaseProjectionBuilder
 from app.services.decision_projection_builder_service import (
     decision_projection_builder_service,
@@ -18,14 +23,17 @@ class ProjectionTypeNotFoundError(LookupError):
 class ProjectionRegistry:
     def __init__(self) -> None:
         self._builders: dict[str, BaseProjectionBuilder] = {}
+        self._schemas: dict[str, ProjectionSchemaInfo] = {}
 
     def register(self, builder: BaseProjectionBuilder) -> None:
-        projection_type = builder.projection_type
+        schema = validate_projection_contract(builder)
+        projection_type = schema.projection_type
         if projection_type in self._builders:
             raise ProjectionTypeAlreadyRegisteredError(
                 f"Projection type already registered: {projection_type}"
             )
         self._builders[projection_type] = builder
+        self._schemas[projection_type] = schema
 
     def get(self, projection_type: str) -> BaseProjectionBuilder:
         try:
@@ -37,6 +45,16 @@ class ProjectionRegistry:
 
     def list_projection_types(self) -> list[str]:
         return sorted(self._builders)
+
+    def get_schema(self, projection_type: str) -> ProjectionSchemaInfo:
+        self.get(projection_type)
+        return self._schemas[projection_type].model_copy(deep=True)
+
+    def list_schemas(self) -> list[ProjectionSchemaInfo]:
+        return [
+            self.get_schema(projection_type)
+            for projection_type in self.list_projection_types()
+        ]
 
 
 projection_registry = ProjectionRegistry()

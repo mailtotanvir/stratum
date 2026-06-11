@@ -1,7 +1,10 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 from app.models.planner import PlannerRequest, PlannerResponse
+from app.models.projection import Projection
 from app.models.tool import Tool
+from app.services.base_projection_builder import BaseProjectionBuilder
 from app.services.decision_evidence_service import DecisionEvidenceService
 from app.services.decision_projection_builder_service import (
     DecisionProjectionBuilderService,
@@ -16,7 +19,9 @@ from app.services.proposal_service import ProposalService
 from app.services.reconstruction_service import ReconstructionService
 from app.services.runtime_session_service import RuntimeSessionService
 from app.services.session_decision_projection_builder_service import (
+    SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
     SESSION_DECISION_PROJECTION_SOURCE,
+    SESSION_DECISION_PROJECTION_TYPE,
     SessionDecisionProjectionBuilderService,
 )
 from app.services.trace_service import TraceService
@@ -56,7 +61,11 @@ def create_recommendation(
     )
 
 
-def make_session_projection_fixture(tmp_path):
+def make_session_projection_fixture(
+    tmp_path,
+    decision_clock=None,
+    session_clock=None,
+):
     trace_path = tmp_path / "trace.db"
     events = EventService(TraceService(trace_path))
     sessions = RuntimeSessionService(tmp_path / "sessions.db")
@@ -89,10 +98,12 @@ def make_session_projection_fixture(tmp_path):
         ),
         recommendations=recommendations,
         events=events,
+        clock=decision_clock,
     )
     builder = SessionDecisionProjectionBuilderService(
         projections=decision_projections,
         events=events,
+        clock=session_clock,
     )
 
     session = sessions.create_session("session-decision-projection-task")
@@ -142,16 +153,61 @@ def session_state(record) -> tuple:
     )
 
 
-def test_session_decision_projection_rebuild_is_deterministic_and_fresh(
+def projection_payload(projection):
+    return projection.model_dump(
+        mode="json",
+        exclude={
+            "metadata": True,
+            "projections": {"__all__": {"metadata"}},
+        },
+    )
+
+
+def test_session_projection_builder_satisfies_common_contract(tmp_path) -> None:
+    fixture = make_session_projection_fixture(tmp_path)
+
+    result = fixture["builder"].build(fixture["session"].id)
+
+    assert isinstance(fixture["builder"], BaseProjectionBuilder)
+    assert isinstance(result, Projection)
+
+
+def test_session_decision_projection_rebuild_is_stable_and_fresh(
     tmp_path,
 ) -> None:
-    fixture = make_session_projection_fixture(tmp_path)
+    first_built_at = datetime(2026, 6, 10, 13, 0, tzinfo=UTC)
+    session_build_times = iter(
+        [first_built_at, first_built_at + timedelta(minutes=1)]
+    )
+    fixture = make_session_projection_fixture(
+        tmp_path,
+        session_clock=lambda: next(session_build_times),
+    )
 
     first = fixture["builder"].build(fixture["session"].id)
     second = fixture["builder"].build(fixture["session"].id)
 
-    assert first == second
+    assert projection_payload(first) == projection_payload(second)
     assert first is not second
+    assert first.metadata is not second.metadata
+    assert first.metadata.built_at == first_built_at
+    assert second.metadata.built_at == first_built_at + timedelta(minutes=1)
+    assert first.metadata.projection_type == SESSION_DECISION_PROJECTION_TYPE
+    assert (
+        first.metadata.builder_name
+        == "SessionDecisionProjectionBuilderService"
+    )
+    assert first.metadata.source == SESSION_DECISION_PROJECTION_SOURCE
+    assert (
+        first.metadata.schema_version
+        == SESSION_DECISION_PROJECTION_SCHEMA_VERSION
+    )
+    assert first.metadata.reconstruction.model_dump() == {
+        "projection_type": SESSION_DECISION_PROJECTION_TYPE,
+        "reconstruction_source": "decision_projection",
+        "rebuildable": True,
+        "authoritative_source": "runtime_session",
+    }
     assert first.projections is not second.projections
     assert all(
         first_projection is not second_projection

@@ -29,6 +29,10 @@ from app.models.planner import (
     RecommendationSelectionPreview,
 )
 from app.models.planning_context import PlanningContext
+from app.models.projection import (
+    ProjectionReconstructionInfo,
+    ProjectionSchemaInfo,
+)
 from app.models.proposal import Proposal
 from app.models.proposal import ProposalSourceType
 from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskArtifact
@@ -37,7 +41,10 @@ from app.models.runtime_event import EventType
 from app.models.runtime_session import RuntimeSession
 from app.models.session_decision_projection import SessionDecisionProjection
 from app.models.tool import Tool, ToolParameter
-from app.runtime.projection_registry import projection_registry
+from app.runtime.projection_registry import (
+    ProjectionTypeNotFoundError,
+    projection_registry,
+)
 from app.runtime.python_async_runtime import python_async_runtime
 from app.runtime.work_loop import work_loop_service
 from app.services.artifact_service import ArtifactNotFoundError, artifact_service
@@ -97,6 +104,16 @@ class RuntimeWorkRequest(BaseModel):
 
 class RuntimeProjectionTypes(BaseModel):
     projection_types: list[str]
+    schemas: list[ProjectionSchemaInfo]
+
+
+class RuntimeProjectionTypeDetail(BaseModel):
+    projection_type: str
+    schema_version: int
+    registered: bool
+    builder_name: str
+    reconstruction: ProjectionReconstructionInfo
+    source: str
 
 
 def to_runtime_execution(record: RuntimeExecutionRecord) -> RuntimeExecution:
@@ -255,8 +272,38 @@ def list_runtime_sessions(task_id: str | None = None) -> list[RuntimeSession]:
 
 @router.get("/runtime/projections")
 def list_runtime_projection_types() -> RuntimeProjectionTypes:
+    projection_types = projection_registry.list_projection_types()
+    event_service.emit_event_sync(
+        event_type=EventType.PROJECTION_REGISTRY_INSPECTED,
+        message="Projection registry inspected",
+        metadata={
+            "projection_type_count": len(projection_types),
+            "projection_types": projection_types,
+            "source": "projection_registry",
+        },
+    )
     return RuntimeProjectionTypes(
-        projection_types=projection_registry.list_projection_types()
+        projection_types=projection_types,
+        schemas=projection_registry.list_schemas(),
+    )
+
+
+@router.get("/runtime/projections/{projection_type}")
+def get_runtime_projection_type(
+    projection_type: str,
+) -> RuntimeProjectionTypeDetail:
+    try:
+        schema = projection_registry.get_schema(projection_type)
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return RuntimeProjectionTypeDetail(
+        projection_type=projection_type,
+        schema_version=schema.schema_version,
+        registered=True,
+        builder_name=schema.builder_name,
+        reconstruction=schema.reconstruction,
+        source="projection_registry",
     )
 
 
