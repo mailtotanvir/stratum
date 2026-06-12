@@ -11,9 +11,9 @@ state. These views support inspection and downstream runtime composition, but
 must not become an independent source of truth.
 
 The v0.5.0 projection framework defines projection identity, metadata, schema
-versioning, reconstruction declarations, builder contracts, registration, and
-read-only discovery. It does not introduce projection persistence or an
-execution engine.
+versioning, reconstruction declarations, builder contracts, registration,
+read-only discovery, and explicit request-scoped rebuilds. It does not
+introduce projection persistence or an execution engine.
 
 ## Decision
 
@@ -75,6 +75,17 @@ without mutating authoritative state.
 
 The registry does not build projections.
 
+### Projection Rebuild Service
+
+`ProjectionRebuildService` resolves a named builder through the registry,
+revalidates its contract, builds fresh projection data from an explicit source
+identifier, and validates the result metadata against the registered contract.
+It returns the projection data together with reconstruction metadata and
+started/completed diagnostics. Invalid results return a failed diagnostic.
+
+Rebuilds are explicit API operations. They do not cache or persist projection
+payloads and do not schedule further work.
+
 ### DecisionProjection
 
 `DecisionProjection` is a derived decision summary. Its builder reconstructs it
@@ -126,15 +137,24 @@ source of truth for runtime facts.
 - Every projection declares its authoritative source.
 - Every projection declares its reconstruction source.
 - Projection contracts are validated when registered.
+- Projection contracts and rebuilt results are validated during rebuild.
 - Invalid contracts fail fast.
+- Invalid rebuilds fail with structured diagnostics.
 - Validation protects reconstruction assumptions.
-- Reconstruction metadata remains descriptive only.
+- Reconstruction metadata identifies the canonical inputs used by a rebuild.
+
+## Rebuild Uses
+
+Explicit rebuild is intended for diagnostics, recovery, and verification.
+Rebuild output remains derived state. Producing or inspecting a rebuild does
+not create authority, replace Event Store facts, or replace Runtime Session
+State.
 
 ## Consequences
 
 Projection construction remains builder-owned and request-scoped. Schema and
 reconstruction metadata support compatibility and inspection without creating
-new authority, storage, caching, replay, or automatic rebuild behavior.
+new authority, storage, caching, replay, or automatic execution behavior.
 
 ## Future Roadmap
 
@@ -142,7 +162,6 @@ Potential future capabilities include:
 
 - Projection Engine
 - Projection Replay
-- Projection Rebuild Services
 
 These capabilities are explicitly not implemented in Stratum v0.5.0. Any future
 implementation must preserve the boundary between authoritative state and

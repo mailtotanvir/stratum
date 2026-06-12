@@ -60,6 +60,32 @@ class EventType(StrEnum):
     DECISION_PROJECTION_BUILT = "decision_projection_built"
     SESSION_DECISION_PROJECTION_BUILT = "session_decision_projection_built"
     PROJECTION_REGISTRY_INSPECTED = "projection_registry_inspected"
+    PROJECTION_REBUILD_STARTED = "projection_rebuild_started"
+    PROJECTION_REBUILD_COMPLETED = "projection_rebuild_completed"
+    PROJECTION_REBUILD_FAILED = "projection_rebuild_failed"
+    PROJECTION_VERIFICATION_STARTED = "projection_verification_started"
+    PROJECTION_VERIFICATION_COMPLETED = "projection_verification_completed"
+    PROJECTION_VERIFICATION_FAILED = "projection_verification_failed"
+    PROJECTION_MANIFEST_GENERATED = "projection_manifest_generated"
+    PROJECTION_MANIFEST_HASH_COMPUTED = "projection_manifest_hash_computed"
+    PROJECTION_MANIFEST_GENERATION_FAILED = (
+        "projection_manifest_generation_failed"
+    )
+    PROJECTION_SNAPSHOT_EXPORT_STARTED = "projection_snapshot_export_started"
+    PROJECTION_SNAPSHOT_EXPORT_COMPLETED = (
+        "projection_snapshot_export_completed"
+    )
+    PROJECTION_SNAPSHOT_EXPORT_FAILED = "projection_snapshot_export_failed"
+    PROJECTION_LINEAGE_GENERATED = "projection_lineage_generated"
+    PROJECTION_LINEAGE_GENERATION_FAILED = (
+        "projection_lineage_generation_failed"
+    )
+    RUNTIME_QUERY_REGISTERED = "runtime_query_registered"
+    RUNTIME_QUERY_DISCOVERED = "runtime_query_discovered"
+    RUNTIME_QUERY_EXECUTED = "runtime_query_executed"
+    RUNTIME_QUERY_EXECUTION_STARTED = "runtime_query_execution_started"
+    RUNTIME_QUERY_EXECUTION_COMPLETED = "runtime_query_execution_completed"
+    RUNTIME_QUERY_EXECUTION_FAILED = "runtime_query_execution_failed"
     WORK_LOOP_STARTED = "work_loop_started"
     WORK_LOOP_COMPLETED = "work_loop_completed"
     WORK_LOOP_FAILED = "work_loop_failed"

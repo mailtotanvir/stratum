@@ -30,9 +30,16 @@ from app.models.planner import (
 )
 from app.models.planning_context import PlanningContext
 from app.models.projection import (
+    ProjectionRebuildRequest,
+    ProjectionRebuildResult,
     ProjectionReconstructionInfo,
     ProjectionSchemaInfo,
+    ProjectionSnapshotManifest,
+    ProjectionSnapshotExport,
+    ProjectionSnapshotExportRequest,
+    ProjectionVerificationResult,
 )
+from app.models.projection_lineage import ProjectionLineage
 from app.models.proposal import Proposal
 from app.models.proposal import ProposalSourceType
 from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskArtifact
@@ -68,6 +75,27 @@ from app.services.planner_input_builder_service import (
 from app.services.planner_service import planner_service
 from app.services.planning_context_service import planning_context_service
 from app.services.proposal_service import proposal_service
+from app.services.projection_rebuild_service import (
+    ProjectionRebuildError,
+    ProjectionRebuildValidationError,
+    projection_rebuild_service,
+)
+from app.services.projection_verification_service import (
+    ProjectionVerificationError,
+    projection_verification_service,
+)
+from app.services.projection_snapshot_manifest_service import (
+    ProjectionManifestGenerationError,
+    projection_snapshot_manifest_service,
+)
+from app.services.projection_snapshot_export_service import (
+    ProjectionSnapshotExportError,
+    projection_snapshot_export_service,
+)
+from app.services.projection_lineage_service import (
+    ProjectionLineageGenerationError,
+    projection_lineage_service,
+)
 from app.services.recommendation_selection_service import (
     recommendation_selection_service,
 )
@@ -305,6 +333,130 @@ def get_runtime_projection_type(
         reconstruction=schema.reconstruction,
         source="projection_registry",
     )
+
+
+@router.post("/runtime/projections/{projection_type}/rebuild")
+def rebuild_runtime_projection(
+    projection_type: str,
+    request: ProjectionRebuildRequest,
+) -> ProjectionRebuildResult:
+    try:
+        return projection_rebuild_service.rebuild(
+            projection_type,
+            request.source,
+        )
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionRebuildValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": str(exc),
+                "diagnostics": [
+                    diagnostic.model_dump(mode="json")
+                    for diagnostic in exc.diagnostics
+                ],
+            },
+        ) from exc
+    except ProjectionRebuildError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": str(exc),
+                "diagnostics": [
+                    diagnostic.model_dump(mode="json")
+                    for diagnostic in exc.diagnostics
+                ],
+            },
+        ) from exc
+
+
+@router.get("/projections/{projection_type}/verify")
+@router.get("/runtime/projections/{projection_type}/verify")
+def verify_runtime_projection(
+    projection_type: str,
+    source: str,
+) -> ProjectionVerificationResult:
+    try:
+        return projection_verification_service.verify(
+            projection_type,
+            source,
+        )
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionVerificationError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": str(exc),
+                "diagnostics": [
+                    diagnostic.model_dump(mode="json")
+                    for diagnostic in exc.diagnostics
+                ],
+            },
+        ) from exc
+
+
+@router.get("/projections/{projection_type}/manifest")
+@router.get("/runtime/projections/{projection_type}/manifest")
+def get_projection_manifest(
+    projection_type: str,
+    source: str,
+) -> ProjectionSnapshotManifest:
+    try:
+        return projection_snapshot_manifest_service.current_manifest(
+            projection_type,
+            source,
+        )
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionManifestGenerationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/projections/{projection_type}/lineage")
+@router.get("/runtime/projections/{projection_type}/lineage")
+def get_projection_lineage(
+    projection_type: str,
+    source: str,
+) -> ProjectionLineage:
+    try:
+        return projection_lineage_service.generate(
+            projection_type,
+            source,
+        )
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionLineageGenerationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/projections/{projection_type}/export")
+@router.post("/runtime/projections/{projection_type}/export")
+def export_projection_snapshot(
+    projection_type: str,
+    request: ProjectionSnapshotExportRequest,
+) -> ProjectionSnapshotExport:
+    try:
+        return projection_snapshot_export_service.export(
+            projection_type,
+            request.source,
+            verify=request.verify,
+            include_lineage=request.include_lineage,
+        )
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionSnapshotExportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": str(exc),
+                "diagnostics": [
+                    diagnostic.model_dump(mode="json")
+                    for diagnostic in exc.diagnostics
+                ],
+            },
+        ) from exc
 
 
 @router.get("/runtime/sessions/{session_id}")
