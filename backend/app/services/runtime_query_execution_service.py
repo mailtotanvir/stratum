@@ -20,6 +20,10 @@ from app.query.runtime_query_registry import (
     runtime_query_registry,
 )
 from app.services.event_service import EventService, event_service
+from app.services.query_history_service import (
+    QueryHistoryService,
+    query_history_service,
+)
 
 
 class RuntimeQueryParameterValidationError(ValueError):
@@ -55,12 +59,18 @@ class RuntimeQueryExecutionService:
         clock: Callable[[], datetime] | None = None,
         timer: Callable[[], float] | None = None,
         id_factory: Callable[[], str] | None = None,
+        history: QueryHistoryService | None = None,
     ) -> None:
         self._registry = registry or runtime_query_registry
         self._events = events or event_service
         self._clock = clock or (lambda: datetime.now(UTC))
         self._timer = timer or perf_counter
         self._id_factory = id_factory or (lambda: str(uuid4()))
+        self._history = history or (
+            query_history_service
+            if self._events is event_service
+            else QueryHistoryService(self._events)
+        )
 
     def execute(
         self,
@@ -98,7 +108,7 @@ class RuntimeQueryExecutionService:
                 request.parameters,
             )
             result = handler.execute(dict(request.parameters))
-        except RuntimeQueryParameterValidationError:
+        except RuntimeQueryParameterValidationError as exc:
             duration_ms = self._duration_ms(started_at)
             failed = self._diagnostic(
                 EventType.RUNTIME_QUERY_EXECUTION_FAILED,
@@ -108,6 +118,22 @@ class RuntimeQueryExecutionService:
                 success=False,
             )
             self._emit(failed, severity=Severity.ERROR)
+            self._record_history(
+                execution_id=execution_id,
+                executed_at=self._clock(),
+                parameters=request.parameters,
+                metadata=metadata,
+                handler=handler,
+                duration_ms=duration_ms,
+                success=False,
+                result_summary={
+                    "error_type": type(exc).__name__,
+                    "issues": [
+                        issue.model_dump(mode="json")
+                        for issue in exc.issues
+                    ],
+                },
+            )
             raise
         except Exception as exc:
             duration_ms = self._duration_ms(started_at)
@@ -119,6 +145,19 @@ class RuntimeQueryExecutionService:
                 success=False,
             )
             self._emit(failed, severity=Severity.ERROR)
+            self._record_history(
+                execution_id=execution_id,
+                executed_at=self._clock(),
+                parameters=request.parameters,
+                metadata=metadata,
+                handler=handler,
+                duration_ms=duration_ms,
+                success=False,
+                result_summary={
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                },
+            )
             raise RuntimeQueryExecutionError(
                 f"Runtime query execution failed: {exc}",
                 request.query_name,
@@ -136,19 +175,56 @@ class RuntimeQueryExecutionService:
         )
         self._emit(completed)
         self._emit_legacy_executed(metadata, handler)
-        return RuntimeQueryExecutionResult(
+        executed_at = self._clock()
+        execution_metadata = RuntimeQueryExecutionMetadata(
+            query_name=metadata.query_name,
+            query_version=metadata.query_version,
+            handler_name=type(handler).__name__,
+            execution_duration_ms=duration_ms,
+        )
+        execution_result = RuntimeQueryExecutionResult(
             query_name=request.query_name,
             execution_id=execution_id,
-            executed_at=self._clock(),
+            executed_at=executed_at,
             success=True,
             result=result,
             diagnostics=[started, completed],
+            execution_metadata=execution_metadata,
+        )
+        self._history.record_execution(
+            execution_id=execution_id,
+            executed_at=executed_at,
+            parameters=request.parameters,
+            execution_metadata=execution_metadata,
+            success=True,
+            result_summary=result,
+        )
+        return execution_result
+
+    def _record_history(
+        self,
+        *,
+        execution_id: str,
+        executed_at: datetime,
+        parameters: dict[str, Any],
+        metadata: RuntimeQuery,
+        handler: RuntimeQueryHandler,
+        duration_ms: float,
+        success: bool,
+        result_summary: Any,
+    ) -> None:
+        self._history.record_execution(
+            execution_id=execution_id,
+            executed_at=executed_at,
+            parameters=parameters,
             execution_metadata=RuntimeQueryExecutionMetadata(
                 query_name=metadata.query_name,
                 query_version=metadata.query_version,
                 handler_name=type(handler).__name__,
                 execution_duration_ms=duration_ms,
             ),
+            success=success,
+            result_summary=result_summary,
         )
 
     def _duration_ms(self, started_at: float) -> float:

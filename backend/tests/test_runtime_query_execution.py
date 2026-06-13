@@ -120,6 +120,8 @@ def test_runtime_query_execution_service_executes_through_registry(
         "runtime_query_execution_started",
         "runtime_query_execution_completed",
         "runtime_query_executed",
+        "query_history_recorded",
+        "query_reconstruction_generated",
     ]
 
 
@@ -164,8 +166,13 @@ def test_runtime_query_parameter_validation_is_strict_and_structured(
     ] == [
         "runtime_query_execution_started",
         "runtime_query_execution_failed",
+        "query_history_recorded",
+        "query_reconstruction_generated",
     ]
-    assert events.list_persisted_events()[-1].metadata["success"] is False
+    failed = events.list_persisted_events(
+        event_type="runtime_query_execution_failed"
+    )
+    assert failed[-1].metadata["success"] is False
 
 
 def test_unknown_query_emits_failed_execution_diagnostic(tmp_path) -> None:

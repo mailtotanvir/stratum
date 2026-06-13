@@ -88,6 +88,9 @@ class RuntimeQueryRegistry:
             for query_name in sorted(self._handlers)
         ]
 
+    def list_query_names(self) -> list[str]:
+        return sorted(self._handlers)
+
     def _emit(
         self,
         event_type: EventType,
