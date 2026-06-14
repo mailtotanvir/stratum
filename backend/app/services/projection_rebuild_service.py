@@ -1,9 +1,11 @@
+from typing import Any
+
 from app.models.projection import (
     ProjectionRebuildDiagnostic,
     ProjectionRebuildResult,
     ProjectionSchemaInfo,
 )
-from app.models.runtime_event import EventType, Severity
+from app.models.runtime_event import EventType
 from app.runtime.projection_contract_validator import (
     ProjectionContractError,
     validate_projection_contract,
@@ -14,6 +16,10 @@ from app.runtime.projection_registry import (
     projection_registry,
 )
 from app.services.event_service import EventService, event_service
+from app.services.projection_lifecycle_service import (
+    ProjectionLifecycleService,
+    projection_lifecycle_service,
+)
 from app.services.projection_snapshot_manifest_service import (
     ProjectionSnapshotManifestService,
 )
@@ -43,6 +49,7 @@ class ProjectionRebuildService:
         registry: ProjectionRegistry | None = None,
         events: EventService | None = None,
         manifests: ProjectionSnapshotManifestService | None = None,
+        lifecycle: ProjectionLifecycleService | None = None,
     ) -> None:
         self._registry = registry or projection_registry
         self._events = events or event_service
@@ -50,6 +57,18 @@ class ProjectionRebuildService:
             registry=self._registry,
             events=self._events,
         )
+        if lifecycle is not None:
+            self._lifecycle = lifecycle
+        elif (
+            self._registry is projection_registry
+            and self._events is event_service
+        ):
+            self._lifecycle = projection_lifecycle_service
+        else:
+            self._lifecycle = ProjectionLifecycleService(
+                registry=self._registry,
+                events=self._events,
+            )
 
     def rebuild(
         self,
@@ -65,7 +84,11 @@ class ProjectionRebuildService:
                 source,
             )
         ]
-        self._emit(diagnostics[-1])
+        lifecycle = self._lifecycle.register_rebuild_start(
+            schema,
+            source,
+            self._diagnostic_metadata(diagnostics[-1]),
+        )
 
         try:
             projection_data = builder.build(source)
@@ -84,7 +107,11 @@ class ProjectionRebuildService:
                     str(exc),
                 )
             )
-            self._emit(diagnostics[-1], severity=Severity.ERROR)
+            self._lifecycle.register_rebuild_failure(
+                lifecycle,
+                self._diagnostic_metadata(diagnostics[-1]),
+                str(exc),
+            )
             raise ProjectionRebuildValidationError(
                 str(exc),
                 diagnostics,
@@ -99,7 +126,11 @@ class ProjectionRebuildService:
                     message,
                 )
             )
-            self._emit(diagnostics[-1], severity=Severity.ERROR)
+            self._lifecycle.register_rebuild_failure(
+                lifecycle,
+                self._diagnostic_metadata(diagnostics[-1]),
+                message,
+            )
             raise ProjectionRebuildExecutionError(
                 message,
                 diagnostics,
@@ -112,7 +143,10 @@ class ProjectionRebuildService:
                 source,
             )
         )
-        self._emit(diagnostics[-1])
+        self._lifecycle.register_rebuild_completion(
+            lifecycle,
+            self._diagnostic_metadata(diagnostics[-1]),
+        )
         return ProjectionRebuildResult(
             projection_type=schema.projection_type,
             schema_version=schema.schema_version,
@@ -141,22 +175,13 @@ class ProjectionRebuildService:
             message=message,
         )
 
-    def _emit(
-        self,
+    @staticmethod
+    def _diagnostic_metadata(
         diagnostic: ProjectionRebuildDiagnostic,
-        severity: Severity = Severity.INFO,
-    ) -> None:
-        self._events.emit_event_sync(
-            event_type=diagnostic.event_type,
-            severity=severity,
-            message=(
-                diagnostic.message
-                or diagnostic.event_type.replace("_", " ").capitalize()
-            ),
-            metadata=diagnostic.model_dump(
-                mode="json",
-                exclude={"event_type", "message"},
-            ),
+    ) -> dict[str, Any]:
+        return diagnostic.model_dump(
+            mode="json",
+            exclude={"event_type", "message"},
         )
 
 

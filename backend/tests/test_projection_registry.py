@@ -19,6 +19,11 @@ from app.services.decision_projection_builder_service import (
     decision_projection_builder_service,
 )
 from app.services.event_service import event_service
+from app.services.governance_audit_projection_builder_service import (
+    GOVERNANCE_AUDIT_PROJECTION_TYPE,
+    GOVERNANCE_AUDIT_SCHEMA_VERSION,
+    governance_audit_projection_builder,
+)
 from app.services.session_decision_projection_builder_service import (
     SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
     SESSION_DECISION_PROJECTION_TYPE,
@@ -191,11 +196,16 @@ def test_unknown_projection_lookup_raises_predictable_error() -> None:
 def test_runtime_registry_contains_existing_builders() -> None:
     assert projection_registry.list_projection_types() == [
         DECISION_PROJECTION_TYPE,
+        GOVERNANCE_AUDIT_PROJECTION_TYPE,
         SESSION_DECISION_PROJECTION_TYPE,
     ]
     assert (
         projection_registry.get(DECISION_PROJECTION_TYPE)
         is decision_projection_builder_service
+    )
+    assert (
+        projection_registry.get(GOVERNANCE_AUDIT_PROJECTION_TYPE)
+        is governance_audit_projection_builder
     )
     assert (
         projection_registry.get(SESSION_DECISION_PROJECTION_TYPE)
@@ -217,6 +227,17 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
                 "reconstruction_source": "runtime_session_state",
                 "rebuildable": True,
                 "authoritative_source": "runtime_session",
+            },
+        },
+        {
+            "projection_type": GOVERNANCE_AUDIT_PROJECTION_TYPE,
+            "schema_version": GOVERNANCE_AUDIT_SCHEMA_VERSION,
+            "builder_name": "GovernanceAuditProjectionBuilder",
+            "reconstruction": {
+                "projection_type": GOVERNANCE_AUDIT_PROJECTION_TYPE,
+                "reconstruction_source": "runtime_event_store",
+                "rebuildable": True,
+                "authoritative_source": "runtime_event_store",
             },
         },
         {
@@ -255,6 +276,7 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     assert response.json() == {
         "projection_types": [
             DECISION_PROJECTION_TYPE,
+            GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
@@ -270,6 +292,17 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 },
             },
             {
+                "projection_type": GOVERNANCE_AUDIT_PROJECTION_TYPE,
+                "schema_version": GOVERNANCE_AUDIT_SCHEMA_VERSION,
+                "builder_name": "GovernanceAuditProjectionBuilder",
+                "reconstruction": {
+                    "projection_type": GOVERNANCE_AUDIT_PROJECTION_TYPE,
+                    "reconstruction_source": "runtime_event_store",
+                    "rebuildable": True,
+                    "authoritative_source": "runtime_event_store",
+                },
+            },
+            {
                 "projection_type": SESSION_DECISION_PROJECTION_TYPE,
                 "schema_version": SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
                 "builder_name": "SessionDecisionProjectionBuilderService",
@@ -281,15 +314,44 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 },
             },
         ],
+        "projections": [
+            {
+                "projection_name": DECISION_PROJECTION_TYPE,
+                "projection_version": DECISION_PROJECTION_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
+                "projection_name": GOVERNANCE_AUDIT_PROJECTION_TYPE,
+                "projection_version": GOVERNANCE_AUDIT_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
+                "projection_name": SESSION_DECISION_PROJECTION_TYPE,
+                "projection_version": (
+                    SESSION_DECISION_PROJECTION_SCHEMA_VERSION
+                ),
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+        ],
     }
     events = event_service.list_persisted_events(
         event_type="projection_registry_inspected"
     )
     assert len(events) == 1
     assert events[0].metadata == {
-        "projection_type_count": 2,
+        "projection_type_count": 3,
         "projection_types": [
             DECISION_PROJECTION_TYPE,
+            GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "source": "projection_registry",
@@ -300,14 +362,17 @@ def test_runtime_projection_endpoint_does_not_expose_payloads() -> None:
     response = TestClient(app).get("/runtime/projections")
 
     assert response.status_code == 200
-    assert set(response.json()) == {"projection_types", "schemas"}
+    assert set(response.json()) == {
+        "projection_types",
+        "schemas",
+        "projections",
+    }
     response_text = response.text
     for excluded_field in (
         "metadata",
         "decision_id",
         "recommendation_id",
         "session_id",
-        "projections",
     ):
         assert excluded_field not in response_text
 
@@ -405,17 +470,23 @@ def test_runtime_projection_type_detail_does_not_build_or_expose_payloads(
         assert excluded_field not in response_text
 
 
-def test_runtime_projection_list_behavior_remains_unchanged() -> None:
+def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
     response = TestClient(app).get("/runtime/projections")
 
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert {
+        "projection_types": body["projection_types"],
+        "schemas": body["schemas"],
+    } == {
         "projection_types": [
             DECISION_PROJECTION_TYPE,
+            GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
             decision_projection_builder_service.schema_info.model_dump(),
+            governance_audit_projection_builder.schema_info.model_dump(),
             session_decision_projection_builder_service.schema_info.model_dump(),
         ],
     }

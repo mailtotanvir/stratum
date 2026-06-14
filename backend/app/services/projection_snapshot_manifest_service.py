@@ -10,7 +10,7 @@ from app.models.projection import (
     ProjectionSchemaInfo,
     ProjectionSnapshotManifest,
 )
-from app.models.runtime_event import EventType, Severity
+from app.models.runtime_event import EventType, RuntimeEvent, Severity
 from app.runtime.projection_contract_validator import validate_projection_result
 from app.runtime.projection_registry import (
     ProjectionRegistry,
@@ -34,6 +34,17 @@ NON_SOURCE_EVENT_TYPES = frozenset(
         EventType.PROJECTION_REBUILD_STARTED.value,
         EventType.PROJECTION_REBUILD_COMPLETED.value,
         EventType.PROJECTION_REBUILD_FAILED.value,
+        EventType.PROJECTION_REPLAY_STARTED.value,
+        EventType.PROJECTION_REPLAY_COMPLETED.value,
+        EventType.PROJECTION_REPLAY_FAILED.value,
+        EventType.PROJECTION_REPLAY_DRY_RUN_COMPLETED.value,
+        EventType.PROJECTION_DRIFT_CHECK_STARTED.value,
+        EventType.PROJECTION_DRIFT_CHECK_COMPLETED.value,
+        EventType.PROJECTION_DRIFT_DETECTED.value,
+        EventType.PROJECTION_DRIFT_CHECK_FAILED.value,
+        EventType.GOVERNANCE_PROJECTION_UPDATED.value,
+        EventType.GOVERNANCE_DECISION_RECORDED.value,
+        EventType.GOVERNANCE_PROJECTION_REBUILT.value,
         EventType.PROJECTION_VERIFICATION_STARTED.value,
         EventType.PROJECTION_VERIFICATION_COMPLETED.value,
         EventType.PROJECTION_VERIFICATION_FAILED.value,
@@ -140,11 +151,11 @@ class ProjectionSnapshotManifestService:
         return manifest
 
     def _source_event_count(self, source_session_id: str) -> int:
-        return sum(
-            1
-            for event in self._events.list_persisted_events()
-            if event.metadata.get("session_id") == source_session_id
-            and event.type.value not in NON_SOURCE_EVENT_TYPES
+        return len(
+            projection_source_events(
+                self._events.list_persisted_events(),
+                source_session_id,
+            )
         )
 
     def _emit_failure(
@@ -208,6 +219,18 @@ def normalize_projection_content(
             for item in value
         ]
     return value
+
+
+def projection_source_events(
+    events: list[RuntimeEvent],
+    source_session_id: str,
+) -> list[RuntimeEvent]:
+    return [
+        event
+        for event in events
+        if event.metadata.get("session_id") == source_session_id
+        and event.type.value not in NON_SOURCE_EVENT_TYPES
+    ]
 
 
 projection_snapshot_manifest_service = ProjectionSnapshotManifestService()

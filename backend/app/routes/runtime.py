@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.db.schema import (
@@ -40,6 +40,18 @@ from app.models.projection import (
     ProjectionVerificationResult,
 )
 from app.models.projection_lineage import ProjectionLineage
+from app.models.projection_lifecycle import (
+    ProjectionLifecycleStatus,
+    ProjectionRebuildHistory,
+)
+from app.models.projection_drift import (
+    ProjectionDriftReport,
+    ProjectionDriftResult,
+)
+from app.models.projection_replay import (
+    ProjectionReplayRequest,
+    ProjectionReplayResult,
+)
 from app.models.proposal import Proposal
 from app.models.proposal import ProposalSourceType
 from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskArtifact
@@ -80,6 +92,10 @@ from app.services.projection_rebuild_service import (
     ProjectionRebuildValidationError,
     projection_rebuild_service,
 )
+from app.services.projection_replay_service import (
+    ProjectionReplayError,
+    projection_replay_service,
+)
 from app.services.projection_verification_service import (
     ProjectionVerificationError,
     projection_verification_service,
@@ -95,6 +111,13 @@ from app.services.projection_snapshot_export_service import (
 from app.services.projection_lineage_service import (
     ProjectionLineageGenerationError,
     projection_lineage_service,
+)
+from app.services.projection_lifecycle_service import (
+    projection_lifecycle_service,
+)
+from app.services.projection_drift_service import (
+    ProjectionDriftCheckError,
+    projection_drift_service,
 )
 from app.services.recommendation_selection_service import (
     recommendation_selection_service,
@@ -133,6 +156,7 @@ class RuntimeWorkRequest(BaseModel):
 class RuntimeProjectionTypes(BaseModel):
     projection_types: list[str]
     schemas: list[ProjectionSchemaInfo]
+    projections: list[ProjectionLifecycleStatus]
 
 
 class RuntimeProjectionTypeDetail(BaseModel):
@@ -313,7 +337,90 @@ def list_runtime_projection_types() -> RuntimeProjectionTypes:
     return RuntimeProjectionTypes(
         projection_types=projection_types,
         schemas=projection_registry.list_schemas(),
+        projections=projection_lifecycle_service.projection_statuses(),
     )
+
+
+@router.get("/runtime/projections/history")
+def get_runtime_projection_rebuild_history() -> ProjectionRebuildHistory:
+    return projection_lifecycle_service.rebuild_history()
+
+
+@router.get("/runtime/projections/replay/preview")
+def preview_runtime_projection_replay(
+    projection_name: str,
+    event_id_start: int | None = Query(default=None, ge=1),
+    event_id_end: int | None = Query(default=None, ge=1),
+) -> ProjectionReplayResult:
+    if (
+        event_id_start is not None
+        and event_id_end is not None
+        and event_id_start > event_id_end
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "event_id_start must be less than or equal to event_id_end"
+            ),
+        )
+    request = ProjectionReplayRequest(
+        projection_name=projection_name,
+        event_id_start=event_id_start,
+        event_id_end=event_id_end,
+    )
+    try:
+        return projection_replay_service.preview(request)
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionReplayError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": str(exc),
+                "result": exc.result.model_dump(mode="json"),
+            },
+        ) from exc
+
+
+@router.post("/runtime/projections/replay")
+def replay_runtime_projection(
+    request: ProjectionReplayRequest,
+) -> ProjectionReplayResult:
+    try:
+        return projection_replay_service.replay(request)
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionReplayError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": str(exc),
+                "result": exc.result.model_dump(mode="json"),
+            },
+        ) from exc
+
+
+@router.get("/runtime/projections/drift")
+def get_runtime_projection_drift() -> ProjectionDriftReport:
+    return projection_drift_service.check_all()
+
+
+@router.get("/runtime/projections/{projection_name}/drift")
+def get_runtime_projection_drift_detail(
+    projection_name: str,
+) -> ProjectionDriftResult:
+    try:
+        return projection_drift_service.check_projection(projection_name)
+    except ProjectionTypeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProjectionDriftCheckError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": str(exc),
+                "result": exc.result.model_dump(mode="json"),
+            },
+        ) from exc
 
 
 @router.get("/runtime/projections/{projection_type}")

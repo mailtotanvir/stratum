@@ -191,13 +191,29 @@ def test_projection_rebuild_endpoint_rebuilds_registered_projection() -> None:
         event_type="projection_rebuild_completed"
     )
     assert len(completed) == 2
-    assert completed[0].metadata == {
+    assert {
+        key: completed[0].metadata[key]
+        for key in (
+            "projection_type",
+            "schema_version",
+            "builder_name",
+            "source",
+            "reconstruction",
+        )
+    } == {
         "projection_type": "decision_projection",
         "schema_version": 1,
         "builder_name": "DecisionProjectionBuilderService",
         "source": session.id,
         "reconstruction": body["reconstruction"],
     }
+    assert completed[0].metadata["projection_name"] == (
+        "decision_projection"
+    )
+    assert completed[0].metadata["projection_version"] == 1
+    assert completed[0].metadata["status"] == "completed"
+    assert completed[0].metadata["duration_ms"] >= 0
+    assert completed[0].metadata["rebuild_start_event_id"] >= 1
 
 
 def test_projection_rebuild_endpoint_returns_invalid_output_diagnostics(
