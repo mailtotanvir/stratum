@@ -6,7 +6,11 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models.runtime_event import EventType
 from app.services.event_service import EventService
-from app.services.runtime_health_service import RuntimeHealthService
+from app.services.runtime_health_service import (
+    HEALTH_SCORING_POLICY,
+    RuntimeHealthService,
+    _status_for_score,
+)
 from app.services.trace_service import TraceService
 
 
@@ -116,11 +120,22 @@ def test_runtime_health_is_healthy_and_deterministic(tmp_path) -> None:
     evaluated = events.list_persisted_events(
         event_type="runtime_health_evaluated"
     )
-    assert len(evaluated) == 12
+    assert len(evaluated) == 2
     assert evaluated[0].metadata == {
+        "subsystem": "overall",
+        "status": "healthy",
+        "score": 100,
+        "finding_count": 0,
+    }
+    subsystem_events = events.list_persisted_events(
+        event_type="runtime_health_subsystem_evaluated"
+    )
+    assert len(subsystem_events) == 12
+    assert subsystem_events[0].metadata == {
         "subsystem": "runtime",
         "status": "healthy",
         "score": 100,
+        "finding_count": 0,
     }
 
 
@@ -168,13 +183,23 @@ def test_runtime_health_reports_projection_and_query_failures(
         "reconstruction_failure_count": 1,
     }
     assert {
-        finding["finding_type"]
+        finding.finding_type
         for finding in results["queries"].findings
     } == {
         "query_verification_failure",
         "query_execution_failure",
         "query_reconstruction_failure",
     }
+    assert health.findings == [
+        finding
+        for result in health.subsystem_results
+        for finding in result.findings
+    ]
+    assert all(
+        finding.finding_id
+        == f"{finding.subsystem}:{finding.finding_type}"
+        for finding in health.findings
+    )
 
 
 def test_runtime_health_subsystem_scoring(tmp_path) -> None:
@@ -230,7 +255,9 @@ def test_runtime_health_check_failure_isolated_to_subsystem(
 
     assert runtime.status == "unhealthy"
     assert runtime.score == 0
-    assert runtime.findings[0]["finding_type"] == "health_check_failed"
+    assert runtime.findings[0].finding_type == "health_check_failed"
+    assert runtime.findings[0].severity == "critical"
+    assert runtime.findings[0].subsystem == "runtime"
     failed = events.list_persisted_events(
         event_type="runtime_health_check_failed"
     )
@@ -238,7 +265,92 @@ def test_runtime_health_check_failure_isolated_to_subsystem(
         "subsystem": "runtime",
         "status": "unhealthy",
         "score": 0,
+        "finding_count": 1,
     }
+
+
+def test_runtime_health_status_thresholds_and_policy_are_centralized() -> None:
+    assert _status_for_score(100) == "healthy"
+    assert _status_for_score(90) == "healthy"
+    assert _status_for_score(89) == "warning"
+    assert _status_for_score(75) == "warning"
+    assert _status_for_score(74) == "degraded"
+    assert _status_for_score(50) == "degraded"
+    assert _status_for_score(49) == "unhealthy"
+    assert _status_for_score(0) == "unhealthy"
+    assert HEALTH_SCORING_POLICY[
+        "queries.execution_failure"
+    ].penalty_per_occurrence == 15
+
+
+def test_runtime_health_can_report_warning_overall_status(tmp_path) -> None:
+    service, events = make_health_service(tmp_path)
+    events.emit_event_sync(
+        EventType.PROJECTION_REBUILD_FAILED,
+        "Projection contract validation failed",
+        severity="error",
+    )
+    events.emit_event_sync(
+        EventType.PROJECTION_VERIFICATION_FAILED,
+        "Projection verification failed",
+        severity="error",
+    )
+
+    health = service.evaluate()
+
+    assert health.overall_status == "warning"
+    assert health.health_score == 86
+
+
+def test_runtime_health_can_report_unhealthy_overall_status(tmp_path) -> None:
+    sessions = [
+        SimpleNamespace(status="running", completed_at=GENERATED_AT),
+        SimpleNamespace(status="completed", completed_at=None),
+        SimpleNamespace(status="stopped", completed_at=None),
+    ]
+    service, events = make_health_service(
+        tmp_path,
+        sessions=sessions,
+        task_inconsistent=2,
+        proposal_inconsistent=3,
+        recommendation_inconsistent=3,
+        missing_snapshots=6,
+    )
+    for _ in range(3):
+        events.emit_event_sync(
+            EventType.RUNTIME_GOVERNANCE_BLOCKED,
+            "Governance approval inconsistency",
+            severity="error",
+        )
+        events.emit_event_sync(
+            EventType.PROJECTION_REBUILD_FAILED,
+            "Projection contract validation failed",
+            severity="error",
+        )
+        events.emit_event_sync(
+            EventType.PROJECTION_VERIFICATION_FAILED,
+            "Projection verification failed",
+            severity="error",
+        )
+        events.emit_event_sync(
+            EventType.RUNTIME_QUERY_EXECUTION_FAILED,
+            "Runtime query execution failed",
+            severity="error",
+        )
+        events.emit_event_sync(
+            EventType.QUERY_VERIFICATION_FAILED,
+            "Query reconstruction failed",
+            severity="error",
+        )
+
+    health = service.evaluate()
+
+    assert health.overall_status == "unhealthy"
+    assert health.health_score < 50
+    assert all(
+        result.status == "unhealthy"
+        for result in health.subsystem_results
+    )
 
 
 def test_runtime_health_endpoint_is_operational() -> None:
@@ -253,6 +365,8 @@ def test_runtime_health_endpoint_is_operational() -> None:
         "unhealthy",
     }
     assert 0 <= body["health_score"] <= 100
+    assert isinstance(body["findings"], list)
+    assert body["diagnostics"]["subsystem_count"] == 6
     assert [
         result["subsystem_name"]
         for result in body["subsystem_results"]

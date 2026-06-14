@@ -27,7 +27,9 @@ The service evaluates six read-only subsystems:
 - diagnostics
 
 Each subsystem begins at 100 and receives fixed, bounded penalties for
-persisted anomalies. Scores map to statuses:
+persisted anomalies. The policy is centralized in
+`HEALTH_SCORING_POLICY`; check implementations do not contain scoring
+constants. Scores map to statuses:
 
 - 90-100: `healthy`
 - 75-89: `warning`
@@ -37,15 +39,44 @@ persisted anomalies. Scores map to statuses:
 The overall score is the rounded arithmetic mean of subsystem scores. The same
 unchanged inputs therefore produce the same status, score, and findings.
 
+### Scoring Policy
+
+| Subsystem | Signal | Penalty each | Maximum |
+| --- | --- | ---: | ---: |
+| runtime | session integrity issue | 20 | 60 |
+| runtime | reconstruction inconsistency | 20 | 40 |
+| governance | proposal lifecycle anomaly | 20 | 50 |
+| governance | warning diagnostic | 5 | 25 |
+| governance | error or critical diagnostic | 20 | 60 |
+| planner | reconstruction failure | 25 | 70 |
+| planner | input build diagnostic | 5 | 30 |
+| projections | rebuild failure | 15 | 45 |
+| projections | verification failure | 15 | 45 |
+| projections | contract validation failure | 25 | 50 |
+| queries | verification failure | 15 | 45 |
+| queries | execution failure | 15 | 45 |
+| queries | reconstruction failure | 25 | 50 |
+| diagnostics | warning | 3 | 30 |
+| diagnostics | error | 15 | 60 |
+| diagnostics | critical | 50 | 100 |
+
+Subsystem scores are clamped to zero. Bounded penalties prevent repeated
+instances of one signal from dominating without limit, while the arithmetic
+mean gives each subsystem equal weight.
+
 ## Health Philosophy
 
 Health is an interpretation of existing operational signals, not a new source
-of facts. A finding identifies the signal type, severity, count, and operator
-message. Subsystem diagnostics expose the counts used in scoring.
+of facts. A finding has a deterministic ID derived from its subsystem and
+type, a severity, an operator summary, and structured metadata including the
+observed count. Subsystem diagnostics expose the exact counts used in scoring.
 
 If one subsystem check cannot be completed, that subsystem returns an
 unhealthy score of zero and emits `runtime_health_check_failed`. Other
-subsystems remain available.
+subsystems remain available. Successful subsystem checks emit
+`runtime_health_subsystem_evaluated`; the aggregate evaluation emits
+`runtime_health_evaluated`. All three diagnostics carry subsystem, status,
+score, and finding count.
 
 ## Operational Signals
 

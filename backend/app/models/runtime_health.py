@@ -6,17 +6,32 @@ from pydantic import BaseModel, Field
 
 RuntimeHealthStatusValue = Literal[
     "healthy",
-    "degraded",
     "warning",
+    "degraded",
     "unhealthy",
 ]
+RuntimeHealthFindingSeverity = Literal[
+    "info",
+    "warning",
+    "error",
+    "critical",
+]
+
+
+class RuntimeHealthFinding(BaseModel):
+    finding_id: str = Field(min_length=1)
+    finding_type: str = Field(min_length=1)
+    severity: RuntimeHealthFindingSeverity
+    subsystem: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class RuntimeSubsystemHealth(BaseModel):
     subsystem_name: str = Field(min_length=1)
     status: RuntimeHealthStatusValue
     score: int = Field(ge=0, le=100)
-    findings: list[dict[str, Any]]
+    findings: list[RuntimeHealthFinding] = Field(default_factory=list)
     diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -25,4 +40,5 @@ class RuntimeHealthStatus(BaseModel):
     generated_at: datetime
     health_score: int = Field(ge=0, le=100)
     subsystem_results: list[RuntimeSubsystemHealth]
-    diagnostics: list[dict[str, Any]]
+    findings: list[RuntimeHealthFinding] = Field(default_factory=list)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)

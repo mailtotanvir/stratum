@@ -52,6 +52,7 @@ DASHBOARD_EVENT_TYPES = frozenset(
         EventType.RUNTIME_DASHBOARD_GENERATED.value,
         EventType.RUNTIME_DASHBOARD_GENERATION_FAILED.value,
         EventType.RUNTIME_HEALTH_EVALUATED.value,
+        EventType.RUNTIME_HEALTH_SUBSYSTEM_EVALUATED.value,
         EventType.RUNTIME_HEALTH_CHECK_FAILED.value,
     }
 )

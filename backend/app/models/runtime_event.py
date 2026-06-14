@@ -105,6 +105,9 @@ class EventType(StrEnum):
         "runtime_dashboard_generation_failed"
     )
     RUNTIME_HEALTH_EVALUATED = "runtime_health_evaluated"
+    RUNTIME_HEALTH_SUBSYSTEM_EVALUATED = (
+        "runtime_health_subsystem_evaluated"
+    )
     RUNTIME_HEALTH_CHECK_FAILED = "runtime_health_check_failed"
     WORK_LOOP_STARTED = "work_loop_started"
     WORK_LOOP_COMPLETED = "work_loop_completed"
