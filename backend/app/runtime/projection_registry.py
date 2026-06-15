@@ -4,8 +4,14 @@ from app.runtime.projection_contract_validator import (
     validate_projection_contract,
 )
 from app.services.base_projection_builder import BaseProjectionBuilder
+from app.services.artifact_lineage_projection_builder_service import (
+    artifact_lineage_projection_builder,
+)
 from app.services.decision_projection_builder_service import (
     decision_projection_builder_service,
+)
+from app.services.decision_lineage_projection_builder_service import (
+    decision_lineage_projection_builder,
 )
 from app.services.governance_audit_projection_builder_service import (
     governance_audit_projection_builder,
@@ -61,6 +67,8 @@ class ProjectionRegistry:
 
 
 projection_registry = ProjectionRegistry()
+projection_registry.register(artifact_lineage_projection_builder)
+projection_registry.register(decision_lineage_projection_builder)
 projection_registry.register(decision_projection_builder_service)
 projection_registry.register(governance_audit_projection_builder)
 projection_registry.register(session_decision_projection_builder_service)

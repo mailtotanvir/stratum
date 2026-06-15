@@ -33,6 +33,32 @@ DECISION_REPLAY_EVENT_TYPES = frozenset(
     }
 )
 
+DECISION_LINEAGE_REPLAY_EVENT_TYPES = frozenset(
+    {
+        *DECISION_REPLAY_EVENT_TYPES,
+        EventType.PROPOSAL_ARTIFACT_ATTACHED,
+        EventType.ARTIFACT_CREATED,
+    }
+)
+
+ARTIFACT_LINEAGE_REPLAY_EVENT_TYPES = frozenset(
+    {
+        EventType.ARTIFACT_CREATED,
+        EventType.RUNTIME_ARTIFACT_ATTACHED,
+        EventType.PROPOSAL_ARTIFACT_ATTACHED,
+        EventType.TOOL_INVOCATION_REQUESTED,
+        EventType.TOOL_INVOCATION_RUNNING,
+        EventType.TOOL_INVOCATION_COMPLETED,
+        EventType.TOOL_INVOCATION_FAILED,
+        EventType.TOOL_EXECUTION_STARTED,
+        EventType.TOOL_EXECUTION_COMPLETED,
+        EventType.TOOL_EXECUTION_FAILED,
+        EventType.PROPOSAL_GENERATED,
+        EventType.PROPOSAL_RESOLVED,
+        EventType.DECISION_RECORD_CREATED,
+    }
+)
+
 
 @dataclass(frozen=True)
 class ProjectionReplaySnapshot:
@@ -121,6 +147,16 @@ class ProjectionReplayService:
             adapters
             if adapters is not None
             else {
+                "artifact_lineage_projection": (
+                    EventTypeProjectionReplayAdapter(
+                        ARTIFACT_LINEAGE_REPLAY_EVENT_TYPES
+                    )
+                ),
+                "decision_lineage_projection": (
+                    EventTypeProjectionReplayAdapter(
+                        DECISION_LINEAGE_REPLAY_EVENT_TYPES
+                    )
+                ),
                 "decision_projection": EventTypeProjectionReplayAdapter(
                     DECISION_REPLAY_EVENT_TYPES
                 ),

@@ -76,6 +76,18 @@ class EventType(StrEnum):
     GOVERNANCE_PROJECTION_UPDATED = "governance_projection_updated"
     GOVERNANCE_DECISION_RECORDED = "governance_decision_recorded"
     GOVERNANCE_PROJECTION_REBUILT = "governance_projection_rebuilt"
+    DECISION_LINEAGE_UPDATED = "decision_lineage_updated"
+    DECISION_LINEAGE_REBUILT = "decision_lineage_rebuilt"
+    DECISION_LINEAGE_INCOMPLETE = "decision_lineage_incomplete"
+    DECISION_LINEAGE_RECONSTRUCTION_FAILED = (
+        "decision_lineage_reconstruction_failed"
+    )
+    ARTIFACT_LINEAGE_UPDATED = "artifact_lineage_updated"
+    ARTIFACT_LINEAGE_REBUILT = "artifact_lineage_rebuilt"
+    ARTIFACT_LINEAGE_INCOMPLETE = "artifact_lineage_incomplete"
+    ARTIFACT_LINEAGE_RECONSTRUCTION_FAILED = (
+        "artifact_lineage_reconstruction_failed"
+    )
     PROJECTION_VERIFICATION_STARTED = "projection_verification_started"
     PROJECTION_VERIFICATION_COMPLETED = "projection_verification_completed"
     PROJECTION_VERIFICATION_FAILED = "projection_verification_failed"

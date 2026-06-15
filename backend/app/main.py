@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 
 from app.routes.artifact import router as artifact_router
+from app.routes.artifact_lineage import router as artifact_lineage_router
 from app.routes.diagnostics import router as diagnostics_router
+from app.routes.decision_lineage import router as decision_lineage_router
 from app.routes.governance import router as governance_router
 from app.routes.hitl import router as hitl_router
 from app.routes.interrupt import router as interrupt_router
@@ -20,7 +22,9 @@ from app.routes.tool_invocation import router as tool_invocation_router
 
 app = FastAPI(title="Stratum Backend")
 app.include_router(artifact_router)
+app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
+app.include_router(decision_lineage_router)
 app.include_router(governance_router)
 app.include_router(hitl_router)
 app.include_router(interrupt_router)

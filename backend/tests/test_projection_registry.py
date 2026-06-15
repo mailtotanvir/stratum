@@ -18,6 +18,16 @@ from app.services.decision_projection_builder_service import (
     DECISION_PROJECTION_TYPE,
     decision_projection_builder_service,
 )
+from app.services.artifact_lineage_projection_builder_service import (
+    ARTIFACT_LINEAGE_PROJECTION_TYPE,
+    ARTIFACT_LINEAGE_SCHEMA_VERSION,
+    artifact_lineage_projection_builder,
+)
+from app.services.decision_lineage_projection_builder_service import (
+    DECISION_LINEAGE_PROJECTION_TYPE,
+    DECISION_LINEAGE_SCHEMA_VERSION,
+    decision_lineage_projection_builder,
+)
 from app.services.event_service import event_service
 from app.services.governance_audit_projection_builder_service import (
     GOVERNANCE_AUDIT_PROJECTION_TYPE,
@@ -195,10 +205,20 @@ def test_unknown_projection_lookup_raises_predictable_error() -> None:
 
 def test_runtime_registry_contains_existing_builders() -> None:
     assert projection_registry.list_projection_types() == [
+        ARTIFACT_LINEAGE_PROJECTION_TYPE,
+        DECISION_LINEAGE_PROJECTION_TYPE,
         DECISION_PROJECTION_TYPE,
         GOVERNANCE_AUDIT_PROJECTION_TYPE,
         SESSION_DECISION_PROJECTION_TYPE,
     ]
+    assert (
+        projection_registry.get(ARTIFACT_LINEAGE_PROJECTION_TYPE)
+        is artifact_lineage_projection_builder
+    )
+    assert (
+        projection_registry.get(DECISION_LINEAGE_PROJECTION_TYPE)
+        is decision_lineage_projection_builder
+    )
     assert (
         projection_registry.get(DECISION_PROJECTION_TYPE)
         is decision_projection_builder_service
@@ -218,6 +238,28 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
     schemas = projection_registry.list_schemas()
 
     assert [schema.model_dump() for schema in schemas] == [
+        {
+            "projection_type": ARTIFACT_LINEAGE_PROJECTION_TYPE,
+            "schema_version": ARTIFACT_LINEAGE_SCHEMA_VERSION,
+            "builder_name": "ArtifactLineageProjectionBuilder",
+            "reconstruction": {
+                "projection_type": ARTIFACT_LINEAGE_PROJECTION_TYPE,
+                "reconstruction_source": "runtime_event_store",
+                "rebuildable": True,
+                "authoritative_source": "runtime_event_store",
+            },
+        },
+        {
+            "projection_type": DECISION_LINEAGE_PROJECTION_TYPE,
+            "schema_version": DECISION_LINEAGE_SCHEMA_VERSION,
+            "builder_name": "DecisionLineageProjectionBuilder",
+            "reconstruction": {
+                "projection_type": DECISION_LINEAGE_PROJECTION_TYPE,
+                "reconstruction_source": "runtime_event_store",
+                "rebuildable": True,
+                "authoritative_source": "runtime_event_store",
+            },
+        },
         {
             "projection_type": DECISION_PROJECTION_TYPE,
             "schema_version": DECISION_PROJECTION_SCHEMA_VERSION,
@@ -275,11 +317,35 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     assert response.status_code == 200
     assert response.json() == {
         "projection_types": [
+            ARTIFACT_LINEAGE_PROJECTION_TYPE,
+            DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
+            {
+                "projection_type": ARTIFACT_LINEAGE_PROJECTION_TYPE,
+                "schema_version": ARTIFACT_LINEAGE_SCHEMA_VERSION,
+                "builder_name": "ArtifactLineageProjectionBuilder",
+                "reconstruction": {
+                    "projection_type": ARTIFACT_LINEAGE_PROJECTION_TYPE,
+                    "reconstruction_source": "runtime_event_store",
+                    "rebuildable": True,
+                    "authoritative_source": "runtime_event_store",
+                },
+            },
+            {
+                "projection_type": DECISION_LINEAGE_PROJECTION_TYPE,
+                "schema_version": DECISION_LINEAGE_SCHEMA_VERSION,
+                "builder_name": "DecisionLineageProjectionBuilder",
+                "reconstruction": {
+                    "projection_type": DECISION_LINEAGE_PROJECTION_TYPE,
+                    "reconstruction_source": "runtime_event_store",
+                    "rebuildable": True,
+                    "authoritative_source": "runtime_event_store",
+                },
+            },
             {
                 "projection_type": DECISION_PROJECTION_TYPE,
                 "schema_version": DECISION_PROJECTION_SCHEMA_VERSION,
@@ -316,6 +382,22 @@ def test_runtime_projection_endpoint_lists_types_without_building(
         ],
         "projections": [
             {
+                "projection_name": ARTIFACT_LINEAGE_PROJECTION_TYPE,
+                "projection_version": ARTIFACT_LINEAGE_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
+                "projection_name": DECISION_LINEAGE_PROJECTION_TYPE,
+                "projection_version": DECISION_LINEAGE_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
                 "projection_name": DECISION_PROJECTION_TYPE,
                 "projection_version": DECISION_PROJECTION_SCHEMA_VERSION,
                 "latest_rebuild_status": None,
@@ -348,8 +430,10 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     )
     assert len(events) == 1
     assert events[0].metadata == {
-        "projection_type_count": 3,
+        "projection_type_count": 5,
         "projection_types": [
+            ARTIFACT_LINEAGE_PROJECTION_TYPE,
+            DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
@@ -480,11 +564,15 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
         "schemas": body["schemas"],
     } == {
         "projection_types": [
+            ARTIFACT_LINEAGE_PROJECTION_TYPE,
+            DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
+            artifact_lineage_projection_builder.schema_info.model_dump(),
+            decision_lineage_projection_builder.schema_info.model_dump(),
             decision_projection_builder_service.schema_info.model_dump(),
             governance_audit_projection_builder.schema_info.model_dump(),
             session_decision_projection_builder_service.schema_info.model_dump(),
