@@ -269,6 +269,32 @@ They may include:
 
 These systems are later roadmap capabilities. They are not part of the authoritative runtime core.
 
+## Evaluation Architecture
+
+Evaluation is a first-class future domain object in Stratum's derived governance layer.
+
+An Evaluation does not replace a RuntimeEvent and is not a source of truth. The Runtime Event Store remains authoritative. Evaluation records are derived from task outcomes, artifacts, traces, and acceptance criteria so that runtime performance can be assessed without changing the event-store-first architecture.
+
+Evaluations should eventually support model and provider comparison. In particular, they should help Stratum determine whether cheaper or faster models are good enough for a workflow while preserving observable evidence for that decision.
+
+The initial implementation should remain basic:
+- persist evaluation records
+- emit evaluation events
+
+Do not build complex evaluators in the MVP. A broader evaluation engine belongs to a later roadmap phase.
+
+Evaluations are durable assets whose coverage and quality should grow over time. Workflow learning should happen through:
+1. improved evaluations
+2. improved skills
+3. approved proposals
+
+Workflow learning must not depend on model fine-tuning or uncontrolled self-modification.
+
+Evaluation roadmap:
+- V4: basic Evaluation object, table, routes, and events
+- V5: simple evaluators such as build, test, and manual checklist evaluators
+- V6: provider comparison and a governed workflow-learning loop
+
 ## Version Roadmap
 
 MVP:
