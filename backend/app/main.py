@@ -14,6 +14,9 @@ from app.routes.query import router as query_router
 from app.routes.reconstruct import router as reconstruct_router
 from app.routes.reflection import router as reflection_router
 from app.routes.runtime import router as runtime_router
+from app.routes.runtime_reconstruction import (
+    router as runtime_reconstruction_router,
+)
 from app.routes.stream import router as stream_router
 from app.routes.stop import router as stop_router
 from app.routes.task import router as task_router
@@ -34,6 +37,7 @@ app.include_router(proposal_router)
 app.include_router(query_router)
 app.include_router(reflection_router)
 app.include_router(runtime_router)
+app.include_router(runtime_reconstruction_router)
 app.include_router(stream_router)
 app.include_router(stop_router)
 app.include_router(task_router)

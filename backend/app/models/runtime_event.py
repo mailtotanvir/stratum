@@ -134,6 +134,15 @@ class EventType(StrEnum):
         "runtime_health_subsystem_evaluated"
     )
     RUNTIME_HEALTH_CHECK_FAILED = "runtime_health_check_failed"
+    RUNTIME_RECONSTRUCTION_VIEW_BUILT = (
+        "runtime_reconstruction_view_built"
+    )
+    RUNTIME_RECONSTRUCTION_VIEW_INCOMPLETE = (
+        "runtime_reconstruction_view_incomplete"
+    )
+    RUNTIME_RECONSTRUCTION_VIEW_FAILED = (
+        "runtime_reconstruction_view_failed"
+    )
     WORK_LOOP_STARTED = "work_loop_started"
     WORK_LOOP_COMPLETED = "work_loop_completed"
     WORK_LOOP_FAILED = "work_loop_failed"
