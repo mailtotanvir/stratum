@@ -9,6 +9,8 @@ from app.models.runtime_health import RuntimeHealthStatus
 from app.models.runtime_reconstruction import (
     RuntimeReconstructionArtifactSummary,
     RuntimeReconstructionDecisionSummary,
+    RuntimeReconstructionEvaluationResultSummary,
+    RuntimeReconstructionEvaluationSummary,
     RuntimeReconstructionHealthSummary,
     RuntimeReconstructionMetrics,
     RuntimeReconstructionProposalSummary,
@@ -57,6 +59,8 @@ MAJOR_RUNTIME_EVENT_TYPES = frozenset(
         EventType.PLANNER_RECOMMENDATION_DISMISSED,
         EventType.DECISION_RECORD_CREATED,
         EventType.DECISION_EVIDENCE_CREATED,
+        EventType.EVALUATION_CREATED,
+        EventType.EVALUATION_RESULT_ADDED,
         EventType.PROPOSAL_GENERATED,
         EventType.PROPOSAL_RESOLVED,
         EventType.TOOL_EXECUTION_STARTED,
@@ -234,6 +238,7 @@ class RuntimeReconstructionService:
             session_events,
             proposal_ids,
         )
+        evaluations = self._evaluation_summaries(session_events)
         tools = self._tool_summaries(session_events)
         timeline = self._timeline(session_events)
 
@@ -274,6 +279,7 @@ class RuntimeReconstructionService:
             proposal_summaries=proposals,
             decision_lineage_summaries=decision_summaries,
             artifact_lineage_summaries=artifact_summaries,
+            evaluation_summaries=evaluations,
             tool_execution_summaries=tools,
             health_consistency_status=health_summary,
             timeline=timeline,
@@ -294,6 +300,7 @@ class RuntimeReconstructionService:
             event_count=view.total_events,
             decision_count=len(decision_summaries),
             artifact_count=len(artifact_summaries),
+            evaluation_count=len(evaluations),
             incomplete_reason_count=len(incomplete_reasons),
         )
         return view
@@ -572,6 +579,101 @@ class RuntimeReconstructionService:
                 or datetime.min.replace(tzinfo=UTC),
                 item.tool_invocation_id,
             ),
+        )
+
+    @staticmethod
+    def _evaluation_summaries(
+        events: list[RuntimeEvent],
+    ) -> list[RuntimeReconstructionEvaluationSummary]:
+        states: dict[str, dict[str, Any]] = {}
+        for event in events:
+            if event.type not in {
+                EventType.EVALUATION_CREATED,
+                EventType.EVALUATION_RESULT_ADDED,
+            }:
+                continue
+            evaluation_id = event.metadata.get("evaluation_id")
+            if not isinstance(evaluation_id, str):
+                continue
+            state = states.setdefault(
+                evaluation_id,
+                {
+                    "evaluation_type": None,
+                    "status": None,
+                    "created_at": event.ts,
+                    "session_id": None,
+                    "decision_id": None,
+                    "artifact_id": None,
+                    "results": [],
+                },
+            )
+            if event.type == EventType.EVALUATION_CREATED:
+                for field in (
+                    "evaluation_type",
+                    "status",
+                    "created_at",
+                    "session_id",
+                    "decision_id",
+                    "artifact_id",
+                ):
+                    value = event.metadata.get(field)
+                    if isinstance(value, str):
+                        state[field] = value
+            elif event.type == EventType.EVALUATION_RESULT_ADDED:
+                result_id = event.metadata.get("evaluation_result_id")
+                dimension_id = event.metadata.get("dimension_id")
+                rationale = event.metadata.get("rationale")
+                score = event.metadata.get("score")
+                if (
+                    isinstance(result_id, str)
+                    and isinstance(dimension_id, str)
+                    and isinstance(rationale, str)
+                    and isinstance(score, int | float)
+                ):
+                    state["results"].append(
+                        RuntimeReconstructionEvaluationResultSummary(
+                            evaluation_result_id=result_id,
+                            dimension_id=dimension_id,
+                            score=float(score),
+                            rationale=rationale,
+                            created_at=(
+                                event.metadata.get("created_at")
+                                or event.ts
+                            ),
+                        )
+                    )
+                for field in ("session_id", "decision_id", "artifact_id"):
+                    value = event.metadata.get(field)
+                    if isinstance(value, str) and state[field] is None:
+                        state[field] = value
+
+        summaries = []
+        for evaluation_id, state in states.items():
+            if not isinstance(state["evaluation_type"], str):
+                continue
+            if not isinstance(state["status"], str):
+                continue
+            summaries.append(
+                RuntimeReconstructionEvaluationSummary(
+                    evaluation_id=evaluation_id,
+                    evaluation_type=state["evaluation_type"],
+                    status=state["status"],
+                    created_at=state["created_at"],
+                    session_id=state["session_id"],
+                    decision_id=state["decision_id"],
+                    artifact_id=state["artifact_id"],
+                    results=sorted(
+                        state["results"],
+                        key=lambda item: (
+                            item.created_at,
+                            item.evaluation_result_id,
+                        ),
+                    ),
+                )
+            )
+        return sorted(
+            summaries,
+            key=lambda item: (item.created_at, item.evaluation_id),
         )
 
     @staticmethod

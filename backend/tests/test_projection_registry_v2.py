@@ -164,6 +164,7 @@ def test_default_registry_contracts_cover_v0_6_surfaces() -> None:
         "artifact_lineage_projection",
         "decision_lineage_projection",
         "decision_projection",
+        "evaluation_summary",
         "explainability",
         "governance_audit_projection",
         "operational_analytics",
@@ -178,11 +179,12 @@ def test_projection_registry_list_route() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["registered_projections_total"] == 9
+    assert body["registered_projections_total"] == 10
     assert [item["projection_name"] for item in body["projections"]] == [
         "artifact_lineage_projection",
         "decision_lineage_projection",
         "decision_projection",
+        "evaluation_summary",
         "explainability",
         "governance_audit_projection",
         "operational_analytics",
@@ -190,7 +192,7 @@ def test_projection_registry_list_route() -> None:
         "runtime_reconstruction_view",
         "session_decision_projection",
     ]
-    assert body["observability_metrics"]["registered_projections_total"] == 9
+    assert body["observability_metrics"]["registered_projections_total"] == 10
 
 
 def test_projection_registry_detail_route() -> None:

@@ -272,6 +272,18 @@ def default_projection_contracts() -> list[ProjectionContract]:
             supports_explainability=True,
         ),
         ProjectionContract(
+            projection_name="evaluation_summary",
+            projection_version=1,
+            projection_description="Summarizes persisted evaluations and result dimensions.",
+            projection_owner="runtime",
+            projection_category="evaluation",
+            supports_replay=True,
+            supports_drift_detection=True,
+            supports_reconstruction=True,
+            supports_analytics=True,
+            supports_explainability=True,
+        ),
+        ProjectionContract(
             projection_name="explainability",
             projection_version=1,
             projection_description="Derived explanations for decisions, artifacts, and sessions.",

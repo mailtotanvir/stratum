@@ -57,6 +57,8 @@ class EventType(StrEnum):
     PLANNER_RECOMMENDATION_DISMISSED = "planner_recommendation_dismissed"
     DECISION_RECORD_CREATED = "decision_record_created"
     DECISION_EVIDENCE_CREATED = "decision_evidence_created"
+    EVALUATION_CREATED = "evaluation_created"
+    EVALUATION_RESULT_ADDED = "evaluation_result_added"
     DECISION_PROJECTION_BUILT = "decision_projection_built"
     SESSION_DECISION_PROJECTION_BUILT = "session_decision_projection_built"
     PROJECTION_REGISTRY_INSPECTED = "projection_registry_inspected"

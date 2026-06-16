@@ -37,6 +37,11 @@ DECISION_EVIDENCE_EVENTS = {
     EventType.DECISION_EVIDENCE_CREATED.value,
 }
 
+EVALUATION_EVENTS = {
+    EventType.EVALUATION_CREATED.value,
+    EventType.EVALUATION_RESULT_ADDED.value,
+}
+
 
 class ReconstructionService:
     def __init__(
@@ -321,6 +326,103 @@ class ReconstructionService:
                 len(records) for records in evidence_by_decision.values()
             ),
             "evidence_counts_by_type": counts_by_type,
+        }
+
+    def reconstruct_evaluations(
+        self,
+        session_id: str | None = None,
+        decision_id: str | None = None,
+        artifact_id: str | None = None,
+    ) -> dict[str, Any]:
+        states: dict[str, dict[str, Any]] = {}
+        for event in self._events.list_persisted_events():
+            if event.type.value not in EVALUATION_EVENTS:
+                continue
+
+            evaluation_id = event.metadata.get("evaluation_id")
+            if not isinstance(evaluation_id, str):
+                continue
+
+            state = states.setdefault(
+                evaluation_id,
+                {
+                    "id": evaluation_id,
+                    "session_id": None,
+                    "decision_id": None,
+                    "artifact_id": None,
+                    "evaluation_type": None,
+                    "status": None,
+                    "created_at": None,
+                    "results": [],
+                },
+            )
+            if event.type == EventType.EVALUATION_CREATED:
+                for field in [
+                    "session_id",
+                    "decision_id",
+                    "artifact_id",
+                    "evaluation_type",
+                    "status",
+                    "created_at",
+                ]:
+                    value = event.metadata.get(field)
+                    if isinstance(value, str):
+                        state[field] = value
+                if state["created_at"] is None:
+                    state["created_at"] = event.ts
+            elif event.type == EventType.EVALUATION_RESULT_ADDED:
+                result = {
+                    field: event.metadata.get(field)
+                    for field in [
+                        "evaluation_result_id",
+                        "evaluation_id",
+                        "dimension_id",
+                        "score",
+                        "rationale",
+                        "metadata",
+                        "created_at",
+                    ]
+                }
+                if result["created_at"] is None:
+                    result["created_at"] = event.ts
+                state["results"].append(result)
+                for field in ["session_id", "decision_id", "artifact_id"]:
+                    value = event.metadata.get(field)
+                    if isinstance(value, str) and state[field] is None:
+                        state[field] = value
+
+        evaluations = []
+        counts_by_type: dict[str, int] = {}
+        for state in states.values():
+            if session_id is not None and state["session_id"] != session_id:
+                continue
+            if decision_id is not None and state["decision_id"] != decision_id:
+                continue
+            if artifact_id is not None and state["artifact_id"] != artifact_id:
+                continue
+            evaluation_type = state["evaluation_type"]
+            if isinstance(evaluation_type, str):
+                counts_by_type[evaluation_type] = (
+                    counts_by_type.get(evaluation_type, 0) + 1
+                )
+            state["results"].sort(
+                key=lambda result: (
+                    str(result["created_at"]),
+                    str(result["evaluation_result_id"]),
+                )
+            )
+            evaluations.append(state)
+
+        evaluations.sort(
+            key=lambda evaluation: (
+                str(evaluation["created_at"]),
+                str(evaluation["id"]),
+            )
+        )
+        return {
+            "evaluations": evaluations,
+            "evaluation_count": len(evaluations),
+            "evaluation_counts_by_type": counts_by_type,
         }
 
     def reconstruct_decision_trail(self, proposal_id: str) -> dict[str, Any]:

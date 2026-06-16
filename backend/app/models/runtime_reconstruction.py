@@ -39,6 +39,27 @@ class RuntimeReconstructionArtifactSummary(BaseModel):
     parent_artifact_ids: list[str] = Field(default_factory=list)
 
 
+class RuntimeReconstructionEvaluationResultSummary(BaseModel):
+    evaluation_result_id: str = Field(min_length=1)
+    dimension_id: str = Field(min_length=1)
+    score: float
+    rationale: str = Field(min_length=1)
+    created_at: datetime
+
+
+class RuntimeReconstructionEvaluationSummary(BaseModel):
+    evaluation_id: str = Field(min_length=1)
+    evaluation_type: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    created_at: datetime
+    session_id: str | None = None
+    decision_id: str | None = None
+    artifact_id: str | None = None
+    results: list[RuntimeReconstructionEvaluationResultSummary] = Field(
+        default_factory=list
+    )
+
+
 class RuntimeReconstructionToolSummary(BaseModel):
     tool_invocation_id: str = Field(min_length=1)
     tool_id: str | None = None
@@ -101,6 +122,9 @@ class RuntimeReconstructionView(BaseModel):
     artifact_lineage_summaries: list[
         RuntimeReconstructionArtifactSummary
     ]
+    evaluation_summaries: list[RuntimeReconstructionEvaluationSummary] = Field(
+        default_factory=list
+    )
     tool_execution_summaries: list[RuntimeReconstructionToolSummary]
     health_consistency_status: RuntimeReconstructionHealthSummary
     timeline: list[RuntimeReconstructionTimelineItem]

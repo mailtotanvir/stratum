@@ -95,6 +95,19 @@ def reconstruct_decision_evidence(
     )
 
 
+@router.get("/reconstruct/evaluations")
+def reconstruct_evaluations(
+    session_id: str | None = None,
+    decision_id: str | None = None,
+    artifact_id: str | None = None,
+) -> dict[str, Any]:
+    return reconstruction_service.reconstruct_evaluations(
+        session_id=session_id,
+        decision_id=decision_id,
+        artifact_id=artifact_id,
+    )
+
+
 @router.get("/reconstruct/decision-trails")
 def reconstruct_decision_trails() -> list[dict[str, Any]]:
     return reconstruction_service.reconstruct_all_decision_trails()

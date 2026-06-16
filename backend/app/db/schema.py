@@ -190,6 +190,50 @@ class DecisionEvidenceRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class EvaluationDimensionRecord(Base):
+    __tablename__ = "evaluation_dimensions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, index=True)
+    description: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class EvaluationRecord(Base):
+    __tablename__ = "evaluations"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    session_id: Mapped[str | None] = mapped_column(Text, index=True)
+    decision_id: Mapped[str | None] = mapped_column(Text, index=True)
+    artifact_id: Mapped[str | None] = mapped_column(Text, index=True)
+    evaluation_type: Mapped[str] = mapped_column(Text, index=True)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class EvaluationResultRecord(Base):
+    __tablename__ = "evaluation_results"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    evaluation_id: Mapped[str] = mapped_column(Text, index=True)
+    dimension_id: Mapped[str] = mapped_column(Text, index=True)
+    score: Mapped[float] = mapped_column(Float)
+    rationale: Mapped[str] = mapped_column(Text)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class EvaluationTargetSnapshotRecord(Base):
+    __tablename__ = "evaluation_target_snapshots"
+
+    evaluation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    target_type: Mapped[str] = mapped_column(Text, index=True)
+    target_id: Mapped[str] = mapped_column(Text, index=True)
+    target_summary: Mapped[str] = mapped_column(Text)
+    target_metadata_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class ProposalRecord(Base):
     __tablename__ = "proposals"
 
