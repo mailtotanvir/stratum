@@ -30,6 +30,8 @@ from app.models.planner import (
 )
 from app.models.planning_context import PlanningContext
 from app.models.projection import (
+    ProjectionRegistryCatalog,
+    ProjectionRegistryDetail,
     ProjectionRebuildRequest,
     ProjectionRebuildResult,
     ProjectionReconstructionInfo,
@@ -95,6 +97,10 @@ from app.services.projection_rebuild_service import (
 from app.services.projection_replay_service import (
     ProjectionReplayError,
     projection_replay_service,
+)
+from app.services.projection_registry_service import (
+    ProjectionContractNotFoundError,
+    projection_registry_service,
 )
 from app.services.projection_verification_service import (
     ProjectionVerificationError,
@@ -421,6 +427,21 @@ def get_runtime_projection_drift_detail(
                 "result": exc.result.model_dump(mode="json"),
             },
         ) from exc
+
+
+@router.get("/runtime/projections/registry")
+def get_runtime_projection_registry() -> ProjectionRegistryCatalog:
+    return projection_registry_service.list_registry()
+
+
+@router.get("/runtime/projections/registry/{projection_name}")
+def get_runtime_projection_registry_detail(
+    projection_name: str,
+) -> ProjectionRegistryDetail:
+    try:
+        return projection_registry_service.get(projection_name)
+    except ProjectionContractNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/runtime/projections/{projection_type}")

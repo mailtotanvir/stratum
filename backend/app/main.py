@@ -5,15 +5,25 @@ from app.routes.artifact_lineage import router as artifact_lineage_router
 from app.routes.diagnostics import router as diagnostics_router
 from app.routes.decision_lineage import router as decision_lineage_router
 from app.routes.governance import router as governance_router
+from app.routes.explainability import router as explainability_router
 from app.routes.hitl import router as hitl_router
 from app.routes.interrupt import router as interrupt_router
 from app.routes.observability import router as observability_router
+from app.routes.operational_analytics import (
+    router as operational_analytics_router,
+)
 from app.routes.planner import router as planner_router
 from app.routes.proposal import router as proposal_router
+from app.routes.provider_observability import (
+    router as provider_observability_router,
+)
 from app.routes.query import router as query_router
 from app.routes.reconstruct import router as reconstruct_router
 from app.routes.reflection import router as reflection_router
 from app.routes.runtime import router as runtime_router
+from app.routes.runtime_intelligence import (
+    router as runtime_intelligence_router,
+)
 from app.routes.runtime_reconstruction import (
     router as runtime_reconstruction_router,
 )
@@ -28,15 +38,19 @@ app.include_router(artifact_router)
 app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
 app.include_router(decision_lineage_router)
+app.include_router(explainability_router)
 app.include_router(governance_router)
 app.include_router(hitl_router)
 app.include_router(interrupt_router)
 app.include_router(observability_router)
+app.include_router(operational_analytics_router)
 app.include_router(planner_router)
 app.include_router(proposal_router)
+app.include_router(provider_observability_router)
 app.include_router(query_router)
 app.include_router(reflection_router)
 app.include_router(runtime_router)
+app.include_router(runtime_intelligence_router)
 app.include_router(runtime_reconstruction_router)
 app.include_router(stream_router)
 app.include_router(stop_router)

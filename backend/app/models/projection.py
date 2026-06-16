@@ -20,6 +20,46 @@ class ProjectionSchemaInfo(BaseModel):
     reconstruction: ProjectionReconstructionInfo
 
 
+class ProjectionCapability(BaseModel):
+    replayable: bool
+    drift_checkable: bool
+    reconstructable: bool
+    analyzable: bool
+    explainable: bool
+
+
+class ProjectionContract(BaseModel):
+    projection_name: str = Field(min_length=1)
+    projection_version: int = Field(ge=1)
+    projection_description: str = Field(min_length=1)
+    projection_owner: str = Field(min_length=1)
+    projection_category: str = Field(min_length=1)
+    supports_replay: bool
+    supports_drift_detection: bool
+    supports_reconstruction: bool
+    supports_analytics: bool
+    supports_explainability: bool
+
+
+class ProjectionRegistryEntry(BaseModel):
+    projection_name: str = Field(min_length=1)
+    projection_version: int = Field(ge=1)
+    projection_category: str = Field(min_length=1)
+    contract: ProjectionContract
+    capabilities: ProjectionCapability
+
+
+class ProjectionRegistryCatalog(BaseModel):
+    projections: list[ProjectionRegistryEntry]
+    registered_projections_total: int = Field(ge=0)
+    observability_metrics: dict[str, int] = Field(default_factory=dict)
+
+
+class ProjectionRegistryDetail(ProjectionRegistryEntry):
+    version_information: dict[str, int | str]
+    observability_metrics: dict[str, int] = Field(default_factory=dict)
+
+
 class ProjectionMetadata(ProjectionSchemaInfo):
     built_at: datetime
     source: str = Field(min_length=1)
