@@ -33,6 +33,9 @@ All v0.6.0 observability surfaces are derived query layers:
 - runtime observability dashboard
 - operational analytics
 - runtime intelligence summaries
+- explainability views
+- projection registry v2 contracts
+- provider and cost observability
 
 These views may emit diagnostics about their own generation, but they do not
 promote generated summaries, projections, analytics, intelligence, manifests,
@@ -114,6 +117,42 @@ Risk classification considers:
 Runtime intelligence diagnostics are excluded from intelligence source event
 analysis so reads do not create self-reinforcing risks or activity.
 
+## Explainability
+
+Explainability views compose decision lineage, governance audit records,
+artifact lineage, and runtime reconstruction data. They answer why a decision
+was made, what evidence supported it, which recommendation or proposal was
+selected, which artifacts resulted, and which governance actions influenced
+the result.
+
+Explanations tolerate incomplete history. Missing related evidence marks an
+explanation incomplete with stable reasons instead of creating authoritative
+repairs.
+
+## Projection Registry v2
+
+Projection Registry v2 formalizes projection contracts and capabilities for
+projection and derived observability surfaces. It is a metadata and capability
+registry, not an execution registry. The original builder registry remains the
+source for rebuild, verification, replay, and drift execution.
+
+Registry v2 enforces complete metadata, unique projection names, one active
+version per projection name, and capability consistency. Capabilities identify
+whether a projection is replayable, drift-checkable, reconstructable,
+analyzable, or explainable.
+
+## Provider And Cost Observability
+
+Provider observability aggregates provider and model usage from runtime events
+that carry provider/model metadata. It reports request counts, success and
+failure counts, latency summaries, token estimates, and estimated costs when
+those values are present.
+
+Provider observability does not route providers, call provider APIs, call
+billing APIs, or infer real invoice data. Missing token or cost metadata is
+reported as unknown, not as a generation failure. Cost outputs are explicitly
+marked as estimates.
+
 ## API Shape
 
 v0.6.0 query and observability routes use explicit resource-oriented paths.
@@ -149,6 +188,9 @@ v0.6.0 does not introduce:
 - automatic projection repair
 - automatic governance remediation
 - schema churn for historical runtime events
+- provider routing or provider selection
+- real billing reconciliation
+- network calls to provider APIs
 
 ## Consequences
 
