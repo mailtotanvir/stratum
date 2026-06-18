@@ -33,6 +33,16 @@ from app.services.evaluation_projection_builder_service import (
     EVALUATION_SUMMARY_PROJECTION_TYPE,
     evaluation_projection_builder_service,
 )
+from app.services.evaluation_trend_projection_builder_service import (
+    EVALUATION_TREND_PROJECTION_TYPE,
+    EVALUATION_TREND_SCHEMA_VERSION,
+    evaluation_trend_projection_builder_service,
+)
+from app.services.evaluation_outcome_projection_builder_service import (
+    EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
+    EVALUATION_OUTCOME_ROLLUP_SCHEMA_VERSION,
+    evaluation_outcome_projection_builder_service,
+)
 from app.services.event_service import event_service
 from app.services.governance_audit_projection_builder_service import (
     GOVERNANCE_AUDIT_PROJECTION_TYPE,
@@ -213,7 +223,9 @@ def test_runtime_registry_contains_existing_builders() -> None:
         ARTIFACT_LINEAGE_PROJECTION_TYPE,
         DECISION_LINEAGE_PROJECTION_TYPE,
         DECISION_PROJECTION_TYPE,
+        EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
         EVALUATION_SUMMARY_PROJECTION_TYPE,
+        EVALUATION_TREND_PROJECTION_TYPE,
         GOVERNANCE_AUDIT_PROJECTION_TYPE,
         SESSION_DECISION_PROJECTION_TYPE,
     ]
@@ -230,8 +242,16 @@ def test_runtime_registry_contains_existing_builders() -> None:
         is decision_projection_builder_service
     )
     assert (
+        projection_registry.get(EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE)
+        is evaluation_outcome_projection_builder_service
+    )
+    assert (
         projection_registry.get(EVALUATION_SUMMARY_PROJECTION_TYPE)
         is evaluation_projection_builder_service
+    )
+    assert (
+        projection_registry.get(EVALUATION_TREND_PROJECTION_TYPE)
+        is evaluation_trend_projection_builder_service
     )
     assert (
         projection_registry.get(GOVERNANCE_AUDIT_PROJECTION_TYPE)
@@ -282,6 +302,17 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
             },
         },
         {
+            "projection_type": EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
+            "schema_version": EVALUATION_OUTCOME_ROLLUP_SCHEMA_VERSION,
+            "builder_name": "EvaluationOutcomeProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
+                "reconstruction_source": "evaluation_state",
+                "rebuildable": True,
+                "authoritative_source": "evaluations/results/target_snapshots",
+            },
+        },
+        {
             "projection_type": EVALUATION_SUMMARY_PROJECTION_TYPE,
             "schema_version": EVALUATION_SUMMARY_SCHEMA_VERSION,
             "builder_name": "EvaluationProjectionBuilderService",
@@ -290,6 +321,17 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
                 "reconstruction_source": "evaluation_state",
                 "rebuildable": True,
                 "authoritative_source": "evaluations/results",
+            },
+        },
+        {
+            "projection_type": EVALUATION_TREND_PROJECTION_TYPE,
+            "schema_version": EVALUATION_TREND_SCHEMA_VERSION,
+            "builder_name": "EvaluationTrendProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": EVALUATION_TREND_PROJECTION_TYPE,
+                "reconstruction_source": "evaluation_state",
+                "rebuildable": True,
+                "authoritative_source": "evaluations/results/target_snapshots",
             },
         },
         {
@@ -341,7 +383,9 @@ def test_runtime_projection_endpoint_lists_types_without_building(
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
             DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
+            EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
             EVALUATION_SUMMARY_PROJECTION_TYPE,
+            EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
@@ -380,6 +424,17 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 },
             },
             {
+                "projection_type": EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
+                "schema_version": EVALUATION_OUTCOME_ROLLUP_SCHEMA_VERSION,
+                "builder_name": "EvaluationOutcomeProjectionBuilderService",
+                "reconstruction": {
+                    "projection_type": EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
+                    "reconstruction_source": "evaluation_state",
+                    "rebuildable": True,
+                    "authoritative_source": "evaluations/results/target_snapshots",
+                },
+            },
+            {
                 "projection_type": EVALUATION_SUMMARY_PROJECTION_TYPE,
                 "schema_version": EVALUATION_SUMMARY_SCHEMA_VERSION,
                 "builder_name": "EvaluationProjectionBuilderService",
@@ -388,6 +443,17 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                     "reconstruction_source": "evaluation_state",
                     "rebuildable": True,
                     "authoritative_source": "evaluations/results",
+                },
+            },
+            {
+                "projection_type": EVALUATION_TREND_PROJECTION_TYPE,
+                "schema_version": EVALUATION_TREND_SCHEMA_VERSION,
+                "builder_name": "EvaluationTrendProjectionBuilderService",
+                "reconstruction": {
+                    "projection_type": EVALUATION_TREND_PROJECTION_TYPE,
+                    "reconstruction_source": "evaluation_state",
+                    "rebuildable": True,
+                    "authoritative_source": "evaluations/results/target_snapshots",
                 },
             },
             {
@@ -439,8 +505,24 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 "latest_rebuild_duration_ms": None,
             },
             {
+                "projection_name": EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
+                "projection_version": EVALUATION_OUTCOME_ROLLUP_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
                 "projection_name": EVALUATION_SUMMARY_PROJECTION_TYPE,
                 "projection_version": EVALUATION_SUMMARY_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
+                "projection_name": EVALUATION_TREND_PROJECTION_TYPE,
+                "projection_version": EVALUATION_TREND_SCHEMA_VERSION,
                 "latest_rebuild_status": None,
                 "latest_rebuild_started_at": None,
                 "latest_rebuild_completed_at": None,
@@ -471,12 +553,14 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     )
     assert len(events) == 1
     assert events[0].metadata == {
-        "projection_type_count": 6,
+        "projection_type_count": 8,
         "projection_types": [
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
             DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
+            EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
             EVALUATION_SUMMARY_PROJECTION_TYPE,
+            EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
@@ -609,7 +693,9 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
             DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
+            EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
             EVALUATION_SUMMARY_PROJECTION_TYPE,
+            EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
@@ -617,7 +703,9 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
             artifact_lineage_projection_builder.schema_info.model_dump(),
             decision_lineage_projection_builder.schema_info.model_dump(),
             decision_projection_builder_service.schema_info.model_dump(),
+            evaluation_outcome_projection_builder_service.schema_info.model_dump(),
             evaluation_projection_builder_service.schema_info.model_dump(),
+            evaluation_trend_projection_builder_service.schema_info.model_dump(),
             governance_audit_projection_builder.schema_info.model_dump(),
             session_decision_projection_builder_service.schema_info.model_dump(),
         ],

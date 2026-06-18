@@ -4,8 +4,17 @@ from app.routes.artifact import router as artifact_router
 from app.routes.artifact_lineage import router as artifact_lineage_router
 from app.routes.diagnostics import router as diagnostics_router
 from app.routes.decision_lineage import router as decision_lineage_router
+from app.routes.evaluation_diagnostics import (
+    router as evaluation_diagnostics_router,
+)
+from app.routes.evaluation_outcome_projections import (
+    router as evaluation_outcome_projections_router,
+)
 from app.routes.evaluation_projections import (
     router as evaluation_projections_router,
+)
+from app.routes.evaluation_trend_projections import (
+    router as evaluation_trend_projections_router,
 )
 from app.routes.evaluations import router as evaluations_router
 from app.routes.governance import router as governance_router
@@ -42,7 +51,10 @@ app.include_router(artifact_router)
 app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
 app.include_router(decision_lineage_router)
+app.include_router(evaluation_diagnostics_router)
+app.include_router(evaluation_outcome_projections_router)
 app.include_router(evaluation_projections_router)
+app.include_router(evaluation_trend_projections_router)
 app.include_router(evaluations_router)
 app.include_router(explainability_router)
 app.include_router(governance_router)

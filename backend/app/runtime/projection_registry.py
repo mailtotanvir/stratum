@@ -16,6 +16,12 @@ from app.services.decision_lineage_projection_builder_service import (
 from app.services.evaluation_projection_builder_service import (
     evaluation_projection_builder_service,
 )
+from app.services.evaluation_trend_projection_builder_service import (
+    evaluation_trend_projection_builder_service,
+)
+from app.services.evaluation_outcome_projection_builder_service import (
+    evaluation_outcome_projection_builder_service,
+)
 from app.services.governance_audit_projection_builder_service import (
     governance_audit_projection_builder,
 )
@@ -73,6 +79,8 @@ projection_registry = ProjectionRegistry()
 projection_registry.register(artifact_lineage_projection_builder)
 projection_registry.register(decision_lineage_projection_builder)
 projection_registry.register(decision_projection_builder_service)
+projection_registry.register(evaluation_outcome_projection_builder_service)
 projection_registry.register(evaluation_projection_builder_service)
+projection_registry.register(evaluation_trend_projection_builder_service)
 projection_registry.register(governance_audit_projection_builder)
 projection_registry.register(session_decision_projection_builder_service)
