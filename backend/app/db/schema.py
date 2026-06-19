@@ -234,6 +234,60 @@ class EvaluationTargetSnapshotRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class PolicyRecord(Base):
+    __tablename__ = "policies"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, index=True)
+    description: Mapped[str] = mapped_column(Text)
+    policy_type: Mapped[str] = mapped_column(Text, index=True)
+    status: Mapped[str] = mapped_column(Text, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class PolicyVersionRecord(Base):
+    __tablename__ = "policy_versions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    policy_id: Mapped[str] = mapped_column(Text, index=True)
+    version: Mapped[int] = mapped_column(Integer, index=True)
+    rule_payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class PolicyDecisionRecord(Base):
+    __tablename__ = "policy_decisions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    policy_id: Mapped[str] = mapped_column(Text, index=True)
+    policy_version_id: Mapped[str] = mapped_column(Text, index=True)
+    target_type: Mapped[str] = mapped_column(Text, index=True)
+    target_id: Mapped[str] = mapped_column(Text, index=True)
+    decision: Mapped[str] = mapped_column(Text, index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    evaluation_id: Mapped[str | None] = mapped_column(Text, index=True)
+    evaluation_result_id: Mapped[str | None] = mapped_column(Text, index=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class PolicyViolationRecord(Base):
+    __tablename__ = "policy_violations"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    policy_id: Mapped[str] = mapped_column(Text, index=True)
+    policy_version_id: Mapped[str] = mapped_column(Text, index=True)
+    target_type: Mapped[str] = mapped_column(Text, index=True)
+    target_id: Mapped[str] = mapped_column(Text, index=True)
+    severity: Mapped[str] = mapped_column(Text, index=True)
+    message: Mapped[str] = mapped_column(Text)
+    evaluation_id: Mapped[str | None] = mapped_column(Text, index=True)
+    evaluation_result_id: Mapped[str | None] = mapped_column(Text, index=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class ProposalRecord(Base):
     __tablename__ = "proposals"
 

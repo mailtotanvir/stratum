@@ -16,6 +16,9 @@ from app.routes.evaluation_projections import (
 from app.routes.evaluation_trend_projections import (
     router as evaluation_trend_projections_router,
 )
+from app.routes.evaluation_policy_diagnostics import (
+    router as evaluation_policy_diagnostics_router,
+)
 from app.routes.evaluations import router as evaluations_router
 from app.routes.governance import router as governance_router
 from app.routes.explainability import router as explainability_router
@@ -25,6 +28,15 @@ from app.routes.observability import router as observability_router
 from app.routes.operational_analytics import (
     router as operational_analytics_router,
 )
+from app.routes.policies import router as policies_router
+from app.routes.policy_diagnostics import router as policy_diagnostics_router
+from app.routes.policy_evidence_projections import (
+    router as policy_evidence_projections_router,
+)
+from app.routes.policy_evaluation_overview_projection import (
+    router as policy_evaluation_overview_projection_router,
+)
+from app.routes.policy_projections import router as policy_projections_router
 from app.routes.planner import router as planner_router
 from app.routes.proposal import router as proposal_router
 from app.routes.provider_observability import (
@@ -55,6 +67,7 @@ app.include_router(evaluation_diagnostics_router)
 app.include_router(evaluation_outcome_projections_router)
 app.include_router(evaluation_projections_router)
 app.include_router(evaluation_trend_projections_router)
+app.include_router(evaluation_policy_diagnostics_router)
 app.include_router(evaluations_router)
 app.include_router(explainability_router)
 app.include_router(governance_router)
@@ -62,6 +75,11 @@ app.include_router(hitl_router)
 app.include_router(interrupt_router)
 app.include_router(observability_router)
 app.include_router(operational_analytics_router)
+app.include_router(policies_router)
+app.include_router(policy_diagnostics_router)
+app.include_router(policy_evidence_projections_router)
+app.include_router(policy_evaluation_overview_projection_router)
+app.include_router(policy_projections_router)
 app.include_router(planner_router)
 app.include_router(proposal_router)
 app.include_router(provider_observability_router)

@@ -49,6 +49,21 @@ from app.services.governance_audit_projection_builder_service import (
     GOVERNANCE_AUDIT_SCHEMA_VERSION,
     governance_audit_projection_builder,
 )
+from app.services.policy_evidence_projection_builder_service import (
+    POLICY_EVIDENCE_PROJECTION_TYPE,
+    POLICY_EVIDENCE_SCHEMA_VERSION,
+    policy_evidence_projection_builder_service,
+)
+from app.services.policy_evaluation_overview_projection_builder_service import (
+    POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+    POLICY_EVALUATION_OVERVIEW_SCHEMA_VERSION,
+    policy_evaluation_overview_projection_builder_service,
+)
+from app.services.policy_projection_builder_service import (
+    POLICY_SUMMARY_PROJECTION_TYPE,
+    POLICY_SUMMARY_SCHEMA_VERSION,
+    policy_projection_builder_service,
+)
 from app.services.session_decision_projection_builder_service import (
     SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
     SESSION_DECISION_PROJECTION_TYPE,
@@ -227,6 +242,9 @@ def test_runtime_registry_contains_existing_builders() -> None:
         EVALUATION_SUMMARY_PROJECTION_TYPE,
         EVALUATION_TREND_PROJECTION_TYPE,
         GOVERNANCE_AUDIT_PROJECTION_TYPE,
+        POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+        POLICY_EVIDENCE_PROJECTION_TYPE,
+        POLICY_SUMMARY_PROJECTION_TYPE,
         SESSION_DECISION_PROJECTION_TYPE,
     ]
     assert (
@@ -256,6 +274,18 @@ def test_runtime_registry_contains_existing_builders() -> None:
     assert (
         projection_registry.get(GOVERNANCE_AUDIT_PROJECTION_TYPE)
         is governance_audit_projection_builder
+    )
+    assert (
+        projection_registry.get(POLICY_EVIDENCE_PROJECTION_TYPE)
+        is policy_evidence_projection_builder_service
+    )
+    assert (
+        projection_registry.get(POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE)
+        is policy_evaluation_overview_projection_builder_service
+    )
+    assert (
+        projection_registry.get(POLICY_SUMMARY_PROJECTION_TYPE)
+        is policy_projection_builder_service
     )
     assert (
         projection_registry.get(SESSION_DECISION_PROJECTION_TYPE)
@@ -346,6 +376,46 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
             },
         },
         {
+            "projection_type": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+            "schema_version": POLICY_EVALUATION_OVERVIEW_SCHEMA_VERSION,
+            "builder_name": "PolicyEvaluationOverviewProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+                "reconstruction_source": "policy_evaluation_state",
+                "rebuildable": True,
+                "authoritative_source": (
+                    "policies/policy_decisions/policy_violations/evaluations"
+                ),
+            },
+        },
+        {
+            "projection_type": POLICY_EVIDENCE_PROJECTION_TYPE,
+            "schema_version": POLICY_EVIDENCE_SCHEMA_VERSION,
+            "builder_name": "PolicyEvidenceProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": POLICY_EVIDENCE_PROJECTION_TYPE,
+                "reconstruction_source": "policy_state",
+                "rebuildable": True,
+                "authoritative_source": (
+                    "policies/policy_decisions/policy_violations/evaluations"
+                ),
+            },
+        },
+        {
+            "projection_type": POLICY_SUMMARY_PROJECTION_TYPE,
+            "schema_version": POLICY_SUMMARY_SCHEMA_VERSION,
+            "builder_name": "PolicyProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": POLICY_SUMMARY_PROJECTION_TYPE,
+                "reconstruction_source": "policy_state",
+                "rebuildable": True,
+                "authoritative_source": (
+                    "policies/policy_versions/policy_decisions/"
+                    "policy_violations"
+                ),
+            },
+        },
+        {
             "projection_type": SESSION_DECISION_PROJECTION_TYPE,
             "schema_version": SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
             "builder_name": "SessionDecisionProjectionBuilderService",
@@ -387,6 +457,9 @@ def test_runtime_projection_endpoint_lists_types_without_building(
             EVALUATION_SUMMARY_PROJECTION_TYPE,
             EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
+            POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+            POLICY_EVIDENCE_PROJECTION_TYPE,
+            POLICY_SUMMARY_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
@@ -468,6 +541,46 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 },
             },
             {
+                "projection_type": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+                "schema_version": POLICY_EVALUATION_OVERVIEW_SCHEMA_VERSION,
+                "builder_name": "PolicyEvaluationOverviewProjectionBuilderService",
+                "reconstruction": {
+                    "projection_type": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+                    "reconstruction_source": "policy_evaluation_state",
+                    "rebuildable": True,
+                    "authoritative_source": (
+                        "policies/policy_decisions/policy_violations/evaluations"
+                    ),
+                },
+            },
+            {
+                "projection_type": POLICY_EVIDENCE_PROJECTION_TYPE,
+                "schema_version": POLICY_EVIDENCE_SCHEMA_VERSION,
+                "builder_name": "PolicyEvidenceProjectionBuilderService",
+                "reconstruction": {
+                    "projection_type": POLICY_EVIDENCE_PROJECTION_TYPE,
+                    "reconstruction_source": "policy_state",
+                    "rebuildable": True,
+                    "authoritative_source": (
+                        "policies/policy_decisions/policy_violations/evaluations"
+                    ),
+                },
+            },
+            {
+                "projection_type": POLICY_SUMMARY_PROJECTION_TYPE,
+                "schema_version": POLICY_SUMMARY_SCHEMA_VERSION,
+                "builder_name": "PolicyProjectionBuilderService",
+                "reconstruction": {
+                    "projection_type": POLICY_SUMMARY_PROJECTION_TYPE,
+                    "reconstruction_source": "policy_state",
+                    "rebuildable": True,
+                    "authoritative_source": (
+                        "policies/policy_versions/policy_decisions/"
+                        "policy_violations"
+                    ),
+                },
+            },
+            {
                 "projection_type": SESSION_DECISION_PROJECTION_TYPE,
                 "schema_version": SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
                 "builder_name": "SessionDecisionProjectionBuilderService",
@@ -537,6 +650,30 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 "latest_rebuild_duration_ms": None,
             },
             {
+                "projection_name": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+                "projection_version": POLICY_EVALUATION_OVERVIEW_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
+                "projection_name": POLICY_EVIDENCE_PROJECTION_TYPE,
+                "projection_version": POLICY_EVIDENCE_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
+                "projection_name": POLICY_SUMMARY_PROJECTION_TYPE,
+                "projection_version": POLICY_SUMMARY_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
                 "projection_name": SESSION_DECISION_PROJECTION_TYPE,
                 "projection_version": (
                     SESSION_DECISION_PROJECTION_SCHEMA_VERSION
@@ -553,7 +690,7 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     )
     assert len(events) == 1
     assert events[0].metadata == {
-        "projection_type_count": 8,
+        "projection_type_count": 11,
         "projection_types": [
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
             DECISION_LINEAGE_PROJECTION_TYPE,
@@ -562,6 +699,9 @@ def test_runtime_projection_endpoint_lists_types_without_building(
             EVALUATION_SUMMARY_PROJECTION_TYPE,
             EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
+            POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+            POLICY_EVIDENCE_PROJECTION_TYPE,
+            POLICY_SUMMARY_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "source": "projection_registry",
@@ -697,6 +837,9 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
             EVALUATION_SUMMARY_PROJECTION_TYPE,
             EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
+            POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
+            POLICY_EVIDENCE_PROJECTION_TYPE,
+            POLICY_SUMMARY_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
@@ -707,6 +850,9 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
             evaluation_projection_builder_service.schema_info.model_dump(),
             evaluation_trend_projection_builder_service.schema_info.model_dump(),
             governance_audit_projection_builder.schema_info.model_dump(),
+            policy_evaluation_overview_projection_builder_service.schema_info.model_dump(),
+            policy_evidence_projection_builder_service.schema_info.model_dump(),
+            policy_projection_builder_service.schema_info.model_dump(),
             session_decision_projection_builder_service.schema_info.model_dump(),
         ],
     }

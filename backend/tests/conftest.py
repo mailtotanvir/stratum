@@ -7,6 +7,7 @@ from app.services.event_service import event_service
 from app.services.evaluation_service import evaluation_service
 from app.services.interrupt_service import interrupt_service
 from app.services.planner_recommendation_service import planner_recommendation_service
+from app.services.policy_service import policy_service
 from app.services.proposal_service import proposal_service
 from app.services.proposal_artifact_service import proposal_artifact_service
 from app.services.reflection_service import reflection_service
@@ -28,6 +29,7 @@ def use_temp_trace_store(tmp_path):
     evaluation_service.set_db_path(tmp_path / "evaluations.db")
     interrupt_service.set_db_path(tmp_path / "interrupts.db")
     planner_recommendation_service.set_db_path(tmp_path / "planner_recommendations.db")
+    policy_service.set_db_path(tmp_path / "policies.db")
     proposal_service.set_db_path(tmp_path / "proposals.db")
     proposal_artifact_service.set_db_path(tmp_path / "proposal_artifacts.db")
     reflection_service.set_db_path(tmp_path / "reflections.db")

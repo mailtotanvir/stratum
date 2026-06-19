@@ -25,6 +25,15 @@ from app.services.evaluation_outcome_projection_builder_service import (
 from app.services.governance_audit_projection_builder_service import (
     governance_audit_projection_builder,
 )
+from app.services.policy_evidence_projection_builder_service import (
+    policy_evidence_projection_builder_service,
+)
+from app.services.policy_evaluation_overview_projection_builder_service import (
+    policy_evaluation_overview_projection_builder_service,
+)
+from app.services.policy_projection_builder_service import (
+    policy_projection_builder_service,
+)
 from app.services.session_decision_projection_builder_service import (
     session_decision_projection_builder_service,
 )
@@ -83,4 +92,7 @@ projection_registry.register(evaluation_outcome_projection_builder_service)
 projection_registry.register(evaluation_projection_builder_service)
 projection_registry.register(evaluation_trend_projection_builder_service)
 projection_registry.register(governance_audit_projection_builder)
+projection_registry.register(policy_evidence_projection_builder_service)
+projection_registry.register(policy_evaluation_overview_projection_builder_service)
+projection_registry.register(policy_projection_builder_service)
 projection_registry.register(session_decision_projection_builder_service)
