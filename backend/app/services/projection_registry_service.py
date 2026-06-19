@@ -14,6 +14,98 @@ from app.models.runtime_event import EventType, Severity
 from app.services.event_service import EventService, event_service
 
 
+PROJECTION_QUERY_METADATA: dict[str, dict[str, Any]] = {
+    "artifact_lineage_projection": {
+        "category": "artifacts",
+        "route": "/runtime/artifact-lineage",
+        "supported_filters": ["artifact_id"],
+    },
+    "decision_lineage_projection": {
+        "category": "decisions",
+        "route": "/runtime/decision-lineage",
+        "supported_filters": ["decision_id"],
+    },
+    "decision_projection": {
+        "category": "decisions",
+        "route": "/runtime/projections/decision_projection",
+        "supported_filters": [],
+    },
+    "evaluation_outcome_rollup": {
+        "category": "evaluations",
+        "route": "/runtime/evaluation-outcomes",
+        "supported_filters": ["target_type", "target_id"],
+    },
+    "evaluation_summary": {
+        "category": "evaluations",
+        "route": "/runtime/evaluation-projections",
+        "supported_filters": [
+            "session_id",
+            "decision_id",
+            "artifact_id",
+            "evaluation_type",
+            "status",
+        ],
+    },
+    "evaluation_trend": {
+        "category": "evaluations",
+        "route": "/runtime/evaluation-trends",
+        "supported_filters": [],
+    },
+    "explainability": {
+        "category": "observability",
+        "route": "/runtime/explainability/decisions/{decision_id}",
+        "supported_filters": ["decision_id", "artifact_id", "session_id"],
+    },
+    "governance_audit_projection": {
+        "category": "governance",
+        "route": "/runtime/governance/audit",
+        "supported_filters": ["decision_id"],
+    },
+    "operational_analytics": {
+        "category": "observability",
+        "route": "/runtime/analytics",
+        "supported_filters": [],
+    },
+    "policy_evaluation_overview": {
+        "category": "policies",
+        "route": "/runtime/policy-evaluation-overview",
+        "supported_filters": [],
+    },
+    "policy_evidence": {
+        "category": "policies",
+        "route": "/runtime/policy-evidence",
+        "supported_filters": [
+            "policy_id",
+            "evaluation_id",
+            "evaluation_result_id",
+            "target_type",
+            "target_id",
+            "evidence_type",
+        ],
+    },
+    "policy_summary": {
+        "category": "policies",
+        "route": "/runtime/policy-projections",
+        "supported_filters": ["policy_id"],
+    },
+    "runtime_intelligence": {
+        "category": "observability",
+        "route": "/runtime/intelligence",
+        "supported_filters": [],
+    },
+    "runtime_reconstruction_view": {
+        "category": "observability",
+        "route": "/runtime/reconstruction/sessions",
+        "supported_filters": ["session_id"],
+    },
+    "session_decision_projection": {
+        "category": "decisions",
+        "route": "/runtime/projections/session_decision_projection",
+        "supported_filters": [],
+    },
+}
+
+
 class ProjectionContractValidationError(ValueError):
     pass
 
@@ -193,10 +285,21 @@ class ProjectionRegistryService:
 
     @staticmethod
     def _entry(contract: ProjectionContract) -> ProjectionRegistryEntry:
+        metadata = PROJECTION_QUERY_METADATA.get(contract.projection_name, {})
         return ProjectionRegistryEntry(
             projection_name=contract.projection_name,
             projection_version=contract.projection_version,
             projection_category=contract.projection_category,
+            category=str(
+                metadata.get("category", contract.projection_category)
+            ),
+            route=str(
+                metadata.get(
+                    "route",
+                    f"/runtime/projections/{contract.projection_name}",
+                )
+            ),
+            supported_filters=list(metadata.get("supported_filters", [])),
             contract=contract.model_copy(deep=True),
             capabilities=ProjectionCapability(
                 replayable=contract.supports_replay,

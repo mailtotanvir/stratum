@@ -43,6 +43,13 @@ from app.routes.provider_observability import (
     router as provider_observability_router,
 )
 from app.routes.query import router as query_router
+from app.routes.query_catalog import router as query_catalog_router
+from app.routes.query_executor import router as query_executor_router
+from app.routes.query_executor_diagnostics import (
+    router as query_executor_diagnostics_router,
+)
+from app.routes.query_health import router as query_health_router
+from app.routes.query_manifest import router as query_manifest_router
 from app.routes.reconstruct import router as reconstruct_router
 from app.routes.reflection import router as reflection_router
 from app.routes.runtime import router as runtime_router
@@ -84,6 +91,11 @@ app.include_router(planner_router)
 app.include_router(proposal_router)
 app.include_router(provider_observability_router)
 app.include_router(query_router)
+app.include_router(query_catalog_router)
+app.include_router(query_executor_router)
+app.include_router(query_executor_diagnostics_router)
+app.include_router(query_health_router)
+app.include_router(query_manifest_router)
 app.include_router(reflection_router)
 app.include_router(runtime_router)
 app.include_router(runtime_intelligence_router)

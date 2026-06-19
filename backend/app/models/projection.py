@@ -45,6 +45,9 @@ class ProjectionRegistryEntry(BaseModel):
     projection_name: str = Field(min_length=1)
     projection_version: int = Field(ge=1)
     projection_category: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    route: str = Field(min_length=1)
+    supported_filters: list[str] = Field(default_factory=list)
     contract: ProjectionContract
     capabilities: ProjectionCapability
 
