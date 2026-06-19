@@ -428,3 +428,224 @@ def test_global_evaluation_service_uses_test_db() -> None:
     assert event_service.list_persisted_events(
         event_type="evaluation_created"
     )
+
+
+def test_runtime_evaluation_record_can_be_created_and_retrieved() -> None:
+    client = TestClient(app)
+
+    created = client.post(
+        "/runtime/evaluations",
+        json={
+            "session_id": "session-runtime",
+            "task_id": "task-runtime",
+            "target_type": "decision",
+            "target_id": "decision-1",
+            "evaluation_type": "governance_review",
+            "outcome": "accepted",
+            "score": 0.95,
+            "evaluator": "governance",
+            "rationale": "Decision satisfied runtime criteria.",
+            "metadata": {"source": "test"},
+        },
+    )
+
+    assert created.status_code == 200
+    body = created.json()
+    assert body["evaluation_id"] == "evaluation-record-1"
+    assert body["target_type"] == "decision"
+    assert body["target_id"] == "decision-1"
+    assert body["outcome"] == "accepted"
+    assert body["metadata"] == {"source": "test"}
+    assert "created_at" in body
+
+    detail = client.get(
+        f"/runtime/evaluations/{body['evaluation_id']}"
+    )
+    assert detail.status_code == 200
+    assert detail.json() == body
+
+
+def create_runtime_evaluation_record(
+    client: TestClient,
+    *,
+    target_type: str,
+    target_id: str,
+    evaluation_type: str,
+    outcome: str,
+) -> dict:
+    response = client.post(
+        "/runtime/evaluations",
+        json={
+            "target_type": target_type,
+            "target_id": target_id,
+            "evaluation_type": evaluation_type,
+            "outcome": outcome,
+            "evaluator": "governance",
+        },
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_runtime_evaluation_record_listing() -> None:
+    client = TestClient(app)
+    first = create_runtime_evaluation_record(
+        client,
+        target_type="artifact",
+        target_id="artifact-1",
+        evaluation_type="quality_review",
+        outcome="success",
+    )
+    second = create_runtime_evaluation_record(
+        client,
+        target_type="decision",
+        target_id="decision-1",
+        evaluation_type="safety_review",
+        outcome="failure",
+    )
+
+    assert [
+        item["evaluation_id"]
+        for item in client.get("/runtime/evaluations").json()
+    ] == [first["evaluation_id"], second["evaluation_id"]]
+
+
+def test_runtime_evaluation_record_filter_by_target_type() -> None:
+    client = TestClient(app)
+    first = create_runtime_evaluation_record(
+        client,
+        target_type="artifact",
+        target_id="artifact-1",
+        evaluation_type="quality_review",
+        outcome="success",
+    )
+    create_runtime_evaluation_record(
+        client,
+        target_type="decision",
+        target_id="decision-1",
+        evaluation_type="safety_review",
+        outcome="failure",
+    )
+
+    assert [
+        item["evaluation_id"]
+        for item in client.get(
+            "/runtime/evaluations?target_type=artifact"
+        ).json()
+    ] == [first["evaluation_id"]]
+
+
+def test_runtime_evaluation_record_filter_by_target_id() -> None:
+    client = TestClient(app)
+    create_runtime_evaluation_record(
+        client,
+        target_type="artifact",
+        target_id="artifact-1",
+        evaluation_type="quality_review",
+        outcome="success",
+    )
+    second = create_runtime_evaluation_record(
+        client,
+        target_type="decision",
+        target_id="decision-1",
+        evaluation_type="safety_review",
+        outcome="failure",
+    )
+
+    assert [
+        item["evaluation_id"]
+        for item in client.get(
+            "/runtime/evaluations?target_id=decision-1"
+        ).json()
+    ] == [second["evaluation_id"]]
+
+
+def test_runtime_evaluation_record_filter_by_evaluation_type() -> None:
+    client = TestClient(app)
+    create_runtime_evaluation_record(
+        client,
+        target_type="artifact",
+        target_id="artifact-1",
+        evaluation_type="quality_review",
+        outcome="success",
+    )
+    second = create_runtime_evaluation_record(
+        client,
+        target_type="decision",
+        target_id="decision-1",
+        evaluation_type="safety_review",
+        outcome="failure",
+    )
+
+    assert [
+        item["evaluation_id"]
+        for item in client.get(
+            "/runtime/evaluations?evaluation_type=safety_review"
+        ).json()
+    ] == [second["evaluation_id"]]
+
+
+def test_runtime_evaluation_record_filter_by_outcome() -> None:
+    client = TestClient(app)
+    first = create_runtime_evaluation_record(
+        client,
+        target_type="artifact",
+        target_id="artifact-1",
+        evaluation_type="quality_review",
+        outcome="success",
+    )
+    create_runtime_evaluation_record(
+        client,
+        target_type="decision",
+        target_id="decision-1",
+        evaluation_type="safety_review",
+        outcome="failure",
+    )
+
+    assert [
+        item["evaluation_id"]
+        for item in client.get(
+            "/runtime/evaluations?outcome=success"
+        ).json()
+    ] == [first["evaluation_id"]]
+
+
+def test_runtime_evaluation_record_missing_record_returns_404() -> None:
+    response = TestClient(app).get(
+        "/runtime/evaluations/missing-evaluation"
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": "Evaluation record not found: missing-evaluation"
+    }
+
+
+def test_runtime_evaluation_record_rejects_invalid_target_type() -> None:
+    response = TestClient(app).post(
+        "/runtime/evaluations",
+        json={
+            "target_type": "planner_authority",
+            "target_id": "target-1",
+            "evaluation_type": "governance_review",
+            "outcome": "success",
+            "evaluator": "governance",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_runtime_evaluation_record_rejects_invalid_outcome() -> None:
+    response = TestClient(app).post(
+        "/runtime/evaluations",
+        json={
+            "target_type": "runtime_session",
+            "target_id": "session-1",
+            "evaluation_type": "governance_review",
+            "outcome": "planner_override",
+            "evaluator": "governance",
+        },
+    )
+
+    assert response.status_code == 422

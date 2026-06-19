@@ -5,6 +5,12 @@ from fastapi.testclient import TestClient
 from app.db.schema import DecisionRecordRecord
 from app.main import app
 from app.runtime.projection_registry import projection_registry
+from app.models.evaluation_record import EvaluationRecordCreate
+from app.services.evaluation_record_projection_builder_service import (
+    EVALUATION_RECORD_PROJECTION_TYPE,
+    EvaluationRecordProjectionBuilderService,
+)
+from app.services.evaluation_record_service import EvaluationRecordService
 from app.services.artifact_service import ArtifactService, artifact_service
 from app.services.decision_record_service import DecisionRecordService
 from app.services.evaluation_projection_builder_service import (
@@ -274,3 +280,167 @@ def test_projection_registry_includes_evaluation_summary() -> None:
     schema = projection_registry.get_schema(EVALUATION_SUMMARY_PROJECTION_TYPE)
     assert schema.projection_type == EVALUATION_SUMMARY_PROJECTION_TYPE
     assert schema.builder_name == "EvaluationProjectionBuilderService"
+
+
+def create_evaluation_record(
+    service: EvaluationRecordService,
+    *,
+    target_type: str,
+    target_id: str,
+    evaluation_type: str,
+    outcome: str,
+    score: float | None,
+) -> None:
+    service.create_record(
+        EvaluationRecordCreate(
+            target_type=target_type,  # type: ignore[arg-type]
+            target_id=target_id,
+            evaluation_type=evaluation_type,
+            outcome=outcome,  # type: ignore[arg-type]
+            score=score,
+            evaluator="governance",
+        )
+    )
+
+
+def test_evaluation_record_projection_rebuilds_deterministically() -> None:
+    built_at = datetime(2026, 6, 17, 12, 0, tzinfo=UTC)
+    evaluations = EvaluationRecordService()
+    builder = EvaluationRecordProjectionBuilderService(
+        evaluations=evaluations,
+        clock=lambda: built_at,
+    )
+    create_evaluation_record(
+        evaluations,
+        target_type="artifact",
+        target_id="artifact-1",
+        evaluation_type="quality_review",
+        outcome="success",
+        score=4.0,
+    )
+    create_evaluation_record(
+        evaluations,
+        target_type="decision",
+        target_id="decision-1",
+        evaluation_type="safety_review",
+        outcome="failure",
+        score=2.0,
+    )
+    create_evaluation_record(
+        evaluations,
+        target_type="artifact",
+        target_id="artifact-2",
+        evaluation_type="quality_review",
+        outcome="accepted",
+        score=None,
+    )
+
+    first = builder.build({})
+    second = builder.build({})
+
+    assert first == second
+    assert first.metadata.projection_type == EVALUATION_RECORD_PROJECTION_TYPE
+    assert first.metadata.built_at == built_at
+    assert first.metadata.reconstruction.rebuildable is True
+    assert first.total_evaluations == 3
+    assert first.evaluations_by_type == {
+        "quality_review": 2,
+        "safety_review": 1,
+    }
+    assert first.evaluations_by_outcome == {
+        "accepted": 1,
+        "failure": 1,
+        "success": 1,
+    }
+    assert first.evaluations_by_target_type == {
+        "artifact": 2,
+        "decision": 1,
+    }
+    assert first.average_score_by_evaluation_type == {
+        "quality_review": 4.0,
+        "safety_review": 2.0,
+    }
+    assert first.average_score_by_target_type == {
+        "artifact": 4.0,
+        "decision": 2.0,
+    }
+
+
+def test_evaluation_record_projection_filters_source_records() -> None:
+    evaluations = EvaluationRecordService()
+    builder = EvaluationRecordProjectionBuilderService(
+        evaluations=evaluations,
+    )
+    create_evaluation_record(
+        evaluations,
+        target_type="artifact",
+        target_id="artifact-1",
+        evaluation_type="quality_review",
+        outcome="success",
+        score=4.0,
+    )
+    create_evaluation_record(
+        evaluations,
+        target_type="decision",
+        target_id="decision-1",
+        evaluation_type="quality_review",
+        outcome="failure",
+        score=2.0,
+    )
+
+    projection = builder.build({"target_type": "artifact"})
+
+    assert projection.total_evaluations == 1
+    assert projection.evaluations_by_target_type == {"artifact": 1}
+    assert projection.evaluations_by_outcome == {"success": 1}
+    assert projection.average_score_by_evaluation_type == {
+        "quality_review": 4.0
+    }
+
+
+def test_evaluation_record_projection_summary_route() -> None:
+    client = TestClient(app)
+    client.post(
+        "/runtime/evaluations",
+        json={
+            "target_type": "artifact",
+            "target_id": "artifact-route-1",
+            "evaluation_type": "quality_review",
+            "outcome": "success",
+            "score": 3.0,
+            "evaluator": "governance",
+        },
+    )
+    client.post(
+        "/runtime/evaluations",
+        json={
+            "target_type": "artifact",
+            "target_id": "artifact-route-2",
+            "evaluation_type": "quality_review",
+            "outcome": "failure",
+            "score": 1.0,
+            "evaluator": "governance",
+        },
+    )
+
+    response = client.get(
+        "/runtime/evaluation-projections/summary"
+        "?evaluation_type=quality_review"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_evaluations"] == 2
+    assert body["evaluations_by_type"] == {"quality_review": 2}
+    assert body["evaluations_by_outcome"] == {
+        "failure": 1,
+        "success": 1,
+    }
+    assert body["evaluations_by_target_type"] == {"artifact": 2}
+    assert body["average_score_by_evaluation_type"] == {
+        "quality_review": 2.0
+    }
+    assert body["average_score_by_target_type"] == {"artifact": 2.0}
+    assert body["metadata"]["projection_type"] == (
+        EVALUATION_RECORD_PROJECTION_TYPE
+    )

@@ -28,3 +28,12 @@ class EvaluationSummaryProjection(Projection):
     dimensions: list[EvaluationDimensionSummary]
     created_at: str
     updated_at: str
+
+
+class EvaluationProjection(Projection):
+    total_evaluations: int
+    evaluations_by_type: dict[str, int]
+    evaluations_by_outcome: dict[str, int]
+    evaluations_by_target_type: dict[str, int]
+    average_score_by_evaluation_type: dict[str, float]
+    average_score_by_target_type: dict[str, float]

@@ -5,6 +5,7 @@ from app.services.decision_evidence_service import decision_evidence_service
 from app.services.decision_record_service import decision_record_service
 from app.services.event_service import event_service
 from app.services.evaluation_service import evaluation_service
+from app.services.evaluation_record_service import evaluation_record_service
 from app.services.interrupt_service import interrupt_service
 from app.services.planner_recommendation_service import planner_recommendation_service
 from app.services.policy_service import policy_service
@@ -27,6 +28,7 @@ def use_temp_trace_store(tmp_path):
     decision_record_service.set_db_path(tmp_path / "decision_records.db")
     event_service.set_trace_store(TraceService(tmp_path / "stratum.db"))
     evaluation_service.set_db_path(tmp_path / "evaluations.db")
+    evaluation_record_service.reset()
     interrupt_service.set_db_path(tmp_path / "interrupts.db")
     planner_recommendation_service.set_db_path(tmp_path / "planner_recommendations.db")
     policy_service.set_db_path(tmp_path / "policies.db")
