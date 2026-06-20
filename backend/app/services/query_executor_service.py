@@ -7,17 +7,17 @@ from app.models.query_executor import (
     QueryExecutionRequest,
     QueryExecutionResult,
 )
-from app.services.evaluation_outcome_projection_service import (
-    EvaluationOutcomeProjectionService,
-    evaluation_outcome_projection_service,
+from app.services.evaluation_outcome_rollup_projection_builder_service import (
+    EvaluationOutcomeRollupProjectionBuilderService,
+    evaluation_outcome_rollup_projection_builder_service,
 )
-from app.services.evaluation_projection_service import (
-    EvaluationProjectionService,
-    evaluation_projection_service,
+from app.services.evaluation_summary_projection_builder_service import (
+    EvaluationSummaryProjectionBuilderService,
+    evaluation_summary_projection_builder_service,
 )
-from app.services.evaluation_trend_projection_service import (
-    EvaluationTrendProjectionService,
-    evaluation_trend_projection_service,
+from app.services.evaluation_trend_projection_v2_builder_service import (
+    EvaluationTrendProjectionBuilderService,
+    evaluation_trend_projection_builder_service,
 )
 from app.services.policy_evaluation_overview_projection_service import (
     PolicyEvaluationOverviewProjectionService,
@@ -49,11 +49,13 @@ class QueryExecutorService:
     def __init__(
         self,
         catalog_service: QueryCatalogService | None = None,
-        evaluation_service: EvaluationProjectionService | None = None,
+        evaluation_service: EvaluationSummaryProjectionBuilderService
+        | None = None,
         evaluation_outcome_service: (
-            EvaluationOutcomeProjectionService | None
+            EvaluationOutcomeRollupProjectionBuilderService | None
         ) = None,
-        evaluation_trend_service: EvaluationTrendProjectionService | None = None,
+        evaluation_trend_service: EvaluationTrendProjectionBuilderService
+        | None = None,
         policy_service: PolicyProjectionService | None = None,
         policy_evidence_service: PolicyEvidenceProjectionService | None = None,
         policy_evaluation_overview_service: (
@@ -62,14 +64,15 @@ class QueryExecutorService:
     ) -> None:
         self._catalog_service = catalog_service or query_catalog_service
         self._evaluation_service = (
-            evaluation_service or evaluation_projection_service
+            evaluation_service or evaluation_summary_projection_builder_service
         )
         self._evaluation_outcome_service = (
             evaluation_outcome_service
-            or evaluation_outcome_projection_service
+            or evaluation_outcome_rollup_projection_builder_service
         )
         self._evaluation_trend_service = (
-            evaluation_trend_service or evaluation_trend_projection_service
+            evaluation_trend_service
+            or evaluation_trend_projection_builder_service
         )
         self._policy_service = policy_service or policy_projection_service
         self._policy_evidence_service = (
@@ -136,42 +139,36 @@ class QueryExecutorService:
         self,
         filters: dict[str, Any],
     ) -> Any:
-        return self._evaluation_service.list_evaluation_summaries(
-            session_id=filters.get("session_id"),
-            decision_id=filters.get("decision_id"),
-            artifact_id=filters.get("artifact_id"),
-            evaluation_type=filters.get("evaluation_type"),
-            status=filters.get("status"),
+        return self._evaluation_service.build(
+            {
+                "target_type": filters.get("target_type"),
+                "target_id": filters.get("target_id"),
+                "evaluation_type": filters.get("evaluation_type"),
+                "outcome": filters.get("outcome"),
+            }
         )
 
     def _execute_evaluation_outcome_rollup(
         self,
         filters: dict[str, Any],
     ) -> Any:
-        return self._evaluation_outcome_service.list_outcome_rollups(
-            target_type=filters.get("target_type"),
-            session_id=filters.get("session_id"),
-            decision_id=filters.get("decision_id"),
-            artifact_id=filters.get("artifact_id"),
-            evaluation_type=filters.get("evaluation_type"),
-            status=filters.get("status"),
+        return self._evaluation_outcome_service.build(
+            {
+                "target_type": filters.get("target_type"),
+                "target_id": filters.get("target_id"),
+                "evaluation_type": filters.get("evaluation_type"),
+                "outcome": filters.get("outcome"),
+            }
         )
 
     def _execute_evaluation_trend(
         self,
         filters: dict[str, Any],
     ) -> Any:
-        return self._evaluation_trend_service.list_trend_buckets(
-            target_type=filters.get("target_type"),
-            session_id=filters.get("session_id"),
-            decision_id=filters.get("decision_id"),
-            artifact_id=filters.get("artifact_id"),
-            evaluation_type=filters.get("evaluation_type"),
-            status=filters.get("status"),
-            dimension_id=filters.get("dimension_id"),
-            from_date=filters.get("from_date"),
-            to_date=filters.get("to_date"),
-            granularity=filters.get("granularity"),
+        return self._evaluation_trend_service.build(
+            {
+                "granularity": filters.get("granularity"),
+            }
         )
 
     def _execute_policy_summary(

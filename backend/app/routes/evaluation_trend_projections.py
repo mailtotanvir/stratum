@@ -1,12 +1,27 @@
 from fastapi import APIRouter
 
-from app.models.evaluation_trend_projection import EvaluationTrendBucket
+from app.models.evaluation_trend_projection import (
+    EvaluationTrendBucket,
+    EvaluationTrendProjection,
+)
+from app.services.evaluation_trend_projection_v2_builder_service import (
+    evaluation_trend_projection_builder_service,
+)
 from app.services.evaluation_trend_projection_service import (
     evaluation_trend_projection_service,
 )
 
 
 router = APIRouter()
+
+
+@router.get("/runtime/evaluation-trend")
+def get_evaluation_trend(
+    granularity: str | None = None,
+) -> EvaluationTrendProjection:
+    return evaluation_trend_projection_builder_service.build(
+        {"granularity": granularity}
+    )
 
 
 @router.get("/runtime/evaluation-trends")

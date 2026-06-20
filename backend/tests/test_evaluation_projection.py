@@ -279,7 +279,7 @@ def test_projection_registry_includes_evaluation_summary() -> None:
     )
     schema = projection_registry.get_schema(EVALUATION_SUMMARY_PROJECTION_TYPE)
     assert schema.projection_type == EVALUATION_SUMMARY_PROJECTION_TYPE
-    assert schema.builder_name == "EvaluationProjectionBuilderService"
+    assert schema.builder_name == "EvaluationSummaryProjectionBuilderService"
 
 
 def create_evaluation_record(

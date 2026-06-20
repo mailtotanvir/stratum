@@ -4,6 +4,9 @@ from app.models.evaluation_projection import (
     EvaluationProjection,
     EvaluationSummaryProjection,
 )
+from app.models.evaluation_summary_projection import (
+    EvaluationSummaryProjection as EvaluationSummaryAggregateProjection,
+)
 from app.services.evaluation_record_projection_builder_service import (
     evaluation_record_projection_builder_service,
 )
@@ -11,9 +14,29 @@ from app.services.evaluation_projection_service import (
     EvaluationSummaryProjectionNotFoundError,
     evaluation_projection_service,
 )
+from app.services.evaluation_summary_projection_builder_service import (
+    evaluation_summary_projection_builder_service,
+)
 
 
 router = APIRouter()
+
+
+@router.get("/runtime/evaluation-summary")
+def get_evaluation_summary(
+    target_type: str | None = None,
+    target_id: str | None = None,
+    evaluation_type: str | None = None,
+    outcome: str | None = None,
+) -> EvaluationSummaryAggregateProjection:
+    return evaluation_summary_projection_builder_service.build(
+        {
+            "target_type": target_type,
+            "target_id": target_id,
+            "evaluation_type": evaluation_type,
+            "outcome": outcome,
+        }
+    )
 
 
 @router.get("/runtime/evaluation-projections")

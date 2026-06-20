@@ -5,9 +5,7 @@ from pydantic import Field
 from app.models.projection import Projection
 
 
-class PolicyEvaluationOverviewProjection(Projection):
-    policy_id: str = Field(min_length=1)
-    policy_name: str = Field(min_length=1)
+class EvaluationOutcomeRollupProjection(Projection):
     total_evaluations: int = Field(ge=0)
     success_count: int = Field(ge=0)
     failure_count: int = Field(ge=0)
@@ -15,5 +13,10 @@ class PolicyEvaluationOverviewProjection(Projection):
     rejected_count: int = Field(ge=0)
     reverted_count: int = Field(ge=0)
     inconclusive_count: int = Field(ge=0)
-    average_score: float | None = None
+    success_rate: float = Field(ge=0)
+    failure_rate: float = Field(ge=0)
+    acceptance_rate: float = Field(ge=0)
+    rejection_rate: float = Field(ge=0)
+    reversion_rate: float = Field(ge=0)
+    inconclusive_rate: float = Field(ge=0)
     generated_at: datetime

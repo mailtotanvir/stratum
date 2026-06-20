@@ -18,7 +18,7 @@ class PolicyEvaluationOverviewProjectionService:
 
     def get_policy_evaluation_overview(
         self,
-    ) -> PolicyEvaluationOverviewProjection:
+    ) -> list[PolicyEvaluationOverviewProjection]:
         return self._builder.build({})
 
 

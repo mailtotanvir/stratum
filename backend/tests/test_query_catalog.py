@@ -45,16 +45,30 @@ def test_query_catalog_route_metadata_is_present() -> None:
         for entry in QueryCatalogService().get_catalog().entries
     }
 
-    assert entries["evaluation_summary"].route == (
-        "/runtime/evaluation-projections"
-    )
+    assert entries["evaluation_summary"].route == "/runtime/evaluation-summary"
     assert entries["evaluation_summary"].filters == [
-        "session_id",
-        "decision_id",
-        "artifact_id",
+        "target_type",
+        "target_id",
         "evaluation_type",
-        "status",
+        "outcome",
     ]
+    assert entries["evaluation_outcome_rollup"].route == (
+        "/runtime/evaluation-outcome-rollup"
+    )
+    assert entries["evaluation_outcome_rollup"].filters == [
+        "target_type",
+        "target_id",
+        "evaluation_type",
+        "outcome",
+    ]
+    assert entries["evaluation_trend"].route == "/runtime/evaluation-trend"
+    assert entries["evaluation_trend"].filters == [
+        "granularity",
+    ]
+    assert entries["policy_evaluation_overview"].route == (
+        "/runtime/policy-evaluation-overview"
+    )
+    assert entries["policy_evaluation_overview"].filters == []
     assert entries["policy_evidence"].route == "/runtime/policy-evidence"
     assert entries["policy_evidence"].filters == [
         "policy_id",
@@ -135,6 +149,28 @@ def test_projection_registry_exposes_query_catalog_metadata() -> None:
         "target_id",
         "evidence_type",
     ]
+    assert entries["evaluation_summary"].route == "/runtime/evaluation-summary"
+    assert entries["evaluation_summary"].supported_filters == [
+        "target_type",
+        "target_id",
+        "evaluation_type",
+        "outcome",
+    ]
+    assert entries["evaluation_outcome_rollup"].route == (
+        "/runtime/evaluation-outcome-rollup"
+    )
+    assert entries["evaluation_outcome_rollup"].supported_filters == [
+        "target_type",
+        "target_id",
+        "evaluation_type",
+        "outcome",
+    ]
+    assert entries["evaluation_trend"].route == "/runtime/evaluation-trend"
+    assert entries["evaluation_trend"].supported_filters == ["granularity"]
+    assert entries["policy_evaluation_overview"].route == (
+        "/runtime/policy-evaluation-overview"
+    )
+    assert entries["policy_evaluation_overview"].supported_filters == []
 
 
 def test_query_catalog_endpoint_returns_all_expected_projection_types() -> None:

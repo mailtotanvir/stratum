@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("/runtime/policy-evaluation-overview")
-def get_policy_evaluation_overview() -> PolicyEvaluationOverviewProjection:
+def get_policy_evaluation_overview() -> list[PolicyEvaluationOverviewProjection]:
     return (
         policy_evaluation_overview_projection_service
         .get_policy_evaluation_overview()

@@ -12,29 +12,29 @@ from app.services.query_executor_service import (
 
 class RecordingEvaluationService:
     def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[dict[str, object | None]] = []
 
-    def list_evaluation_summaries(self, **filters):
+    def build(self, filters):
         self.calls.append(filters)
-        return [{"surface": "evaluation_summary", "filters": filters}]
+        return {"surface": "evaluation_summary", "filters": filters}
 
 
 class RecordingOutcomeService:
     def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[dict[str, object | None]] = []
 
-    def list_outcome_rollups(self, **filters):
+    def build(self, filters):
         self.calls.append(filters)
-        return [{"surface": "evaluation_outcome_rollup"}]
+        return {"surface": "evaluation_outcome_rollup", "filters": filters}
 
 
 class RecordingTrendService:
     def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[dict[str, object | None]] = []
 
-    def list_trend_buckets(self, **filters):
+    def build(self, filters):
         self.calls.append(filters)
-        return [{"surface": "evaluation_trend"}]
+        return {"surface": "evaluation_trend", "filters": filters}
 
 
 class RecordingPolicyService:
@@ -89,32 +89,28 @@ def test_valid_query_dispatch() -> None:
     result = service.execute(
         QueryExecutionRequest(
             query_id="evaluation_summary",
-            filters={"status": "passed"},
+            filters={"outcome": "success"},
         )
     )
 
     assert result.query_id == "runtime.evaluation_summary"
     assert result.projection_type == "evaluation_summary"
-    assert result.route == "/runtime/evaluation-projections"
-    assert result.result == [
-        {
-            "surface": "evaluation_summary",
-            "filters": {
-                "session_id": None,
-                "decision_id": None,
-                "artifact_id": None,
-                "evaluation_type": None,
-                "status": "passed",
-            },
-        }
-    ]
+    assert result.route == "/runtime/evaluation-summary"
+    assert result.result == {
+        "surface": "evaluation_summary",
+        "filters": {
+            "target_type": None,
+            "target_id": None,
+            "evaluation_type": None,
+            "outcome": "success",
+        },
+    }
     assert evaluation.calls == [
         {
-            "session_id": None,
-            "decision_id": None,
-            "artifact_id": None,
+            "target_type": None,
+            "target_id": None,
             "evaluation_type": None,
-            "status": "passed",
+            "outcome": "success",
         }
     ]
 
@@ -158,15 +154,6 @@ def test_filters_forwarded_correctly() -> None:
         QueryExecutionRequest(
             query_id="runtime.evaluation_trend",
             filters={
-                "target_type": "artifact",
-                "session_id": "session-1",
-                "decision_id": "decision-1",
-                "artifact_id": "artifact-1",
-                "evaluation_type": "quality",
-                "status": "passed",
-                "dimension_id": "dimension-1",
-                "from_date": "2026-01-01",
-                "to_date": "2026-01-31",
                 "granularity": "day",
             },
         )
@@ -174,15 +161,6 @@ def test_filters_forwarded_correctly() -> None:
 
     assert trend.calls == [
         {
-            "target_type": "artifact",
-            "session_id": "session-1",
-            "decision_id": "decision-1",
-            "artifact_id": "artifact-1",
-            "evaluation_type": "quality",
-            "status": "passed",
-            "dimension_id": "dimension-1",
-            "from_date": "2026-01-01",
-            "to_date": "2026-01-31",
             "granularity": "day",
         }
     ]
@@ -195,10 +173,21 @@ def test_supported_projections_execute_correctly() -> None:
 
     assert service.execute(
         QueryExecutionRequest(query_id="evaluation_outcome_rollup")
-    ).result == [{"surface": "evaluation_outcome_rollup"}]
+    ).result == {
+        "surface": "evaluation_outcome_rollup",
+        "filters": {
+            "target_type": None,
+            "target_id": None,
+            "evaluation_type": None,
+            "outcome": None,
+        },
+    }
     assert service.execute(
         QueryExecutionRequest(query_id="evaluation_trend")
-    ).result == [{"surface": "evaluation_trend"}]
+    ).result == {
+        "surface": "evaluation_trend",
+        "filters": {"granularity": None},
+    }
     assert service.execute(
         QueryExecutionRequest(query_id="policy_summary")
     ).result == [{"surface": "policy_summary"}]
@@ -229,6 +218,21 @@ def test_execution_result_metadata_populated() -> None:
     assert result.executed_at is not None
 
 
+def test_policy_evaluation_overview_execution_metadata() -> None:
+    service, *_, overview = service_with_recorders()
+
+    result = service.execute(
+        QueryExecutionRequest(query_id="policy_evaluation_overview")
+    )
+
+    assert result.query_id == "runtime.policy_evaluation_overview"
+    assert result.projection_type == "policy_evaluation_overview"
+    assert result.route == "/runtime/policy-evaluation-overview"
+    assert result.result == {"surface": "policy_evaluation_overview"}
+    assert result.executed_at is not None
+    assert overview.calls == 1
+
+
 def test_query_executor_route_works() -> None:
     response = TestClient(app).post(
         "/runtime/query-execute",
@@ -239,7 +243,7 @@ def test_query_executor_route_works() -> None:
     body = response.json()
     assert body["query_id"] == "runtime.evaluation_summary"
     assert body["projection_type"] == "evaluation_summary"
-    assert body["route"] == "/runtime/evaluation-projections"
+    assert body["route"] == "/runtime/evaluation-summary"
     assert "executed_at" in body
     assert "result" in body
 

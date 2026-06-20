@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
+from app.models.evaluation_outcome_rollup_projection import (
+    EvaluationOutcomeRollupProjection,
+)
 from app.models.evaluation_outcome_projection import EvaluationOutcomeRollup
+from app.services.evaluation_outcome_rollup_projection_builder_service import (
+    evaluation_outcome_rollup_projection_builder_service,
+)
 from app.services.evaluation_outcome_projection_service import (
     EvaluationOutcomeRollupNotFoundError,
     evaluation_outcome_projection_service,
@@ -8,6 +14,23 @@ from app.services.evaluation_outcome_projection_service import (
 
 
 router = APIRouter()
+
+
+@router.get("/runtime/evaluation-outcome-rollup")
+def get_evaluation_outcome_rollup(
+    target_type: str | None = None,
+    target_id: str | None = None,
+    evaluation_type: str | None = None,
+    outcome: str | None = None,
+) -> EvaluationOutcomeRollupProjection:
+    return evaluation_outcome_rollup_projection_builder_service.build(
+        {
+            "target_type": target_type,
+            "target_id": target_id,
+            "evaluation_type": evaluation_type,
+            "outcome": outcome,
+        }
+    )
 
 
 @router.get("/runtime/evaluation-outcomes")

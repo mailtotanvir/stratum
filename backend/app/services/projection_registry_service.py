@@ -32,24 +32,28 @@ PROJECTION_QUERY_METADATA: dict[str, dict[str, Any]] = {
     },
     "evaluation_outcome_rollup": {
         "category": "evaluations",
-        "route": "/runtime/evaluation-outcomes",
-        "supported_filters": ["target_type", "target_id"],
+        "route": "/runtime/evaluation-outcome-rollup",
+        "supported_filters": [
+            "target_type",
+            "target_id",
+            "evaluation_type",
+            "outcome",
+        ],
     },
     "evaluation_summary": {
         "category": "evaluations",
-        "route": "/runtime/evaluation-projections",
+        "route": "/runtime/evaluation-summary",
         "supported_filters": [
-            "session_id",
-            "decision_id",
-            "artifact_id",
+            "target_type",
+            "target_id",
             "evaluation_type",
-            "status",
+            "outcome",
         ],
     },
     "evaluation_trend": {
         "category": "evaluations",
-        "route": "/runtime/evaluation-trends",
-        "supported_filters": [],
+        "route": "/runtime/evaluation-trend",
+        "supported_filters": ["granularity"],
     },
     "explainability": {
         "category": "observability",
@@ -377,7 +381,7 @@ def default_projection_contracts() -> list[ProjectionContract]:
         ProjectionContract(
             projection_name="evaluation_summary",
             projection_version=1,
-            projection_description="Summarizes persisted evaluations and result dimensions.",
+            projection_description="Summarizes runtime evaluation records.",
             projection_owner="runtime",
             projection_category="evaluation",
             supports_replay=True,
@@ -389,7 +393,7 @@ def default_projection_contracts() -> list[ProjectionContract]:
         ProjectionContract(
             projection_name="evaluation_outcome_rollup",
             projection_version=1,
-            projection_description="Aggregates evaluation outcomes by normalized evaluated target.",
+            projection_description="Summarizes runtime evaluation outcomes.",
             projection_owner="runtime",
             projection_category="evaluation",
             supports_replay=True,
@@ -401,7 +405,7 @@ def default_projection_contracts() -> list[ProjectionContract]:
         ProjectionContract(
             projection_name="evaluation_trend",
             projection_version=1,
-            projection_description="Buckets evaluation activity and result scores over time.",
+            projection_description="Buckets runtime evaluation outcomes over time.",
             projection_owner="runtime",
             projection_category="evaluation",
             supports_replay=True,

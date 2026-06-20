@@ -22,16 +22,16 @@ from app.services.projection_registry_service import (
 
 EVALUATION_PROJECTION_SPECS = {
     "evaluation_summary": {
-        "source": "evaluations/results",
-        "route": "/runtime/evaluation-projections",
+        "source": "runtime_evaluation_records",
+        "route": "/runtime/evaluation-summary",
     },
     "evaluation_outcome_rollup": {
-        "source": "evaluations/results/target_snapshots",
-        "route": "/runtime/evaluation-outcomes",
+        "source": "runtime_evaluation_records",
+        "route": "/runtime/evaluation-outcome-rollup",
     },
     "evaluation_trend": {
-        "source": "evaluations/results/target_snapshots",
-        "route": "/runtime/evaluation-trends",
+        "source": "runtime_evaluation_records",
+        "route": "/runtime/evaluation-trend",
     },
 }
 

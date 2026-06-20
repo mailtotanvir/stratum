@@ -68,9 +68,11 @@ def test_query_manifest_categories_summarize_routes() -> None:
         "/runtime/policy-projections",
     ]
     assert categories["evaluations"].query_count == 3
-    assert "/runtime/evaluation-projections" in (
-        categories["evaluations"].routes
-    )
+    assert categories["evaluations"].routes == [
+        "/runtime/evaluation-outcome-rollup",
+        "/runtime/evaluation-summary",
+        "/runtime/evaluation-trend",
+    ]
 
 
 def test_query_manifest_entry_health_is_included() -> None:
@@ -135,6 +137,36 @@ def test_expected_projections_appear_in_manifest() -> None:
         "target_id",
         "evidence_type",
     ]
+    assert entries["evaluation_summary"].query_id == "runtime.evaluation_summary"
+    assert entries["evaluation_summary"].route == "/runtime/evaluation-summary"
+    assert entries["evaluation_summary"].supported_filters == [
+        "target_type",
+        "target_id",
+        "evaluation_type",
+        "outcome",
+    ]
+    assert entries["evaluation_outcome_rollup"].query_id == (
+        "runtime.evaluation_outcome_rollup"
+    )
+    assert entries["evaluation_outcome_rollup"].route == (
+        "/runtime/evaluation-outcome-rollup"
+    )
+    assert entries["evaluation_outcome_rollup"].supported_filters == [
+        "target_type",
+        "target_id",
+        "evaluation_type",
+        "outcome",
+    ]
+    assert entries["evaluation_trend"].query_id == "runtime.evaluation_trend"
+    assert entries["evaluation_trend"].route == "/runtime/evaluation-trend"
+    assert entries["evaluation_trend"].supported_filters == ["granularity"]
+    assert entries["policy_evaluation_overview"].query_id == (
+        "runtime.policy_evaluation_overview"
+    )
+    assert entries["policy_evaluation_overview"].route == (
+        "/runtime/policy-evaluation-overview"
+    )
+    assert entries["policy_evaluation_overview"].supported_filters == []
 
 
 def test_query_manifest_health_status_is_healthy_when_catalog_is_healthy() -> None:
