@@ -28,6 +28,11 @@ from app.services.decision_lineage_projection_builder_service import (
     DECISION_LINEAGE_SCHEMA_VERSION,
     decision_lineage_projection_builder,
 )
+from app.services.decision_effectiveness_projection_builder_service import (
+    DECISION_EFFECTIVENESS_PROJECTION_TYPE,
+    DECISION_EFFECTIVENESS_SCHEMA_VERSION,
+    decision_effectiveness_projection_builder_service,
+)
 from app.services.evaluation_summary_projection_builder_service import (
     EVALUATION_SUMMARY_SCHEMA_VERSION,
     EVALUATION_SUMMARY_PROJECTION_TYPE,
@@ -49,6 +54,11 @@ from app.services.governance_audit_projection_builder_service import (
     GOVERNANCE_AUDIT_SCHEMA_VERSION,
     governance_audit_projection_builder,
 )
+from app.services.governance_health_rollup_projection_builder_service import (
+    GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
+    GOVERNANCE_HEALTH_ROLLUP_SCHEMA_VERSION,
+    governance_health_rollup_projection_builder_service,
+)
 from app.services.policy_evidence_projection_builder_service import (
     POLICY_EVIDENCE_PROJECTION_TYPE,
     POLICY_EVIDENCE_SCHEMA_VERSION,
@@ -63,6 +73,11 @@ from app.services.policy_projection_builder_service import (
     POLICY_SUMMARY_PROJECTION_TYPE,
     POLICY_SUMMARY_SCHEMA_VERSION,
     policy_projection_builder_service,
+)
+from app.services.recommendation_outcome_projection_builder_service import (
+    RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+    RECOMMENDATION_OUTCOME_SCHEMA_VERSION,
+    recommendation_outcome_projection_builder_service,
 )
 from app.services.session_decision_projection_builder_service import (
     SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
@@ -236,20 +251,27 @@ def test_unknown_projection_lookup_raises_predictable_error() -> None:
 def test_runtime_registry_contains_existing_builders() -> None:
     assert projection_registry.list_projection_types() == [
         ARTIFACT_LINEAGE_PROJECTION_TYPE,
+        DECISION_EFFECTIVENESS_PROJECTION_TYPE,
         DECISION_LINEAGE_PROJECTION_TYPE,
         DECISION_PROJECTION_TYPE,
         EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
         EVALUATION_SUMMARY_PROJECTION_TYPE,
         EVALUATION_TREND_PROJECTION_TYPE,
         GOVERNANCE_AUDIT_PROJECTION_TYPE,
+        GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
         POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
         POLICY_EVIDENCE_PROJECTION_TYPE,
         POLICY_SUMMARY_PROJECTION_TYPE,
+        RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
         SESSION_DECISION_PROJECTION_TYPE,
     ]
     assert (
         projection_registry.get(ARTIFACT_LINEAGE_PROJECTION_TYPE)
         is artifact_lineage_projection_builder
+    )
+    assert (
+        projection_registry.get(DECISION_EFFECTIVENESS_PROJECTION_TYPE)
+        is decision_effectiveness_projection_builder_service
     )
     assert (
         projection_registry.get(DECISION_LINEAGE_PROJECTION_TYPE)
@@ -276,6 +298,10 @@ def test_runtime_registry_contains_existing_builders() -> None:
         is governance_audit_projection_builder
     )
     assert (
+        projection_registry.get(GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE)
+        is governance_health_rollup_projection_builder_service
+    )
+    assert (
         projection_registry.get(POLICY_EVIDENCE_PROJECTION_TYPE)
         is policy_evidence_projection_builder_service
     )
@@ -286,6 +312,10 @@ def test_runtime_registry_contains_existing_builders() -> None:
     assert (
         projection_registry.get(POLICY_SUMMARY_PROJECTION_TYPE)
         is policy_projection_builder_service
+    )
+    assert (
+        projection_registry.get(RECOMMENDATION_OUTCOME_PROJECTION_TYPE)
+        is recommendation_outcome_projection_builder_service
     )
     assert (
         projection_registry.get(SESSION_DECISION_PROJECTION_TYPE)
@@ -307,6 +337,21 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
                 "reconstruction_source": "runtime_event_store",
                 "rebuildable": True,
                 "authoritative_source": "runtime_event_store",
+            },
+        },
+        {
+            "projection_type": DECISION_EFFECTIVENESS_PROJECTION_TYPE,
+            "schema_version": DECISION_EFFECTIVENESS_SCHEMA_VERSION,
+            "builder_name": "DecisionEffectivenessProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": DECISION_EFFECTIVENESS_PROJECTION_TYPE,
+                "reconstruction_source": (
+                    "decision_records,evaluation_records"
+                ),
+                "rebuildable": True,
+                "authoritative_source": (
+                    "decision_records,runtime_evaluation_records"
+                ),
             },
         },
         {
@@ -376,6 +421,27 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
             },
         },
         {
+            "projection_type": GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
+            "schema_version": GOVERNANCE_HEALTH_ROLLUP_SCHEMA_VERSION,
+            "builder_name": "GovernanceHealthRollupProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
+                "reconstruction_source": (
+                    "evaluation_records,"
+                    "recommendation_outcome_projection,"
+                    "decision_effectiveness_projection,"
+                    "policy_evaluation_overview_projection"
+                ),
+                "rebuildable": True,
+                "authoritative_source": (
+                    "runtime_evaluation_records,"
+                    "planner_recommendations,"
+                    "decision_records,"
+                    "policies"
+                ),
+            },
+        },
+        {
             "projection_type": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
             "schema_version": POLICY_EVALUATION_OVERVIEW_SCHEMA_VERSION,
             "builder_name": "PolicyEvaluationOverviewProjectionBuilderService",
@@ -417,6 +483,25 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
             },
         },
         {
+            "projection_type": RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+            "schema_version": RECOMMENDATION_OUTCOME_SCHEMA_VERSION,
+            "builder_name": "RecommendationOutcomeProjectionBuilderService",
+            "reconstruction": {
+                "projection_type": RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+                "reconstruction_source": (
+                    "planner_recommendations,"
+                    "recommendation_selection_records,"
+                    "evaluation_records"
+                ),
+                "rebuildable": True,
+                "authoritative_source": (
+                    "planner_recommendations,"
+                    "decision_records,"
+                    "runtime_evaluation_records"
+                ),
+            },
+        },
+        {
             "projection_type": SESSION_DECISION_PROJECTION_TYPE,
             "schema_version": SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
             "builder_name": "SessionDecisionProjectionBuilderService",
@@ -452,15 +537,18 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     assert response.json() == {
         "projection_types": [
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
+            DECISION_EFFECTIVENESS_PROJECTION_TYPE,
             DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
             EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
             EVALUATION_SUMMARY_PROJECTION_TYPE,
             EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
+            GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
             POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
             POLICY_EVIDENCE_PROJECTION_TYPE,
             POLICY_SUMMARY_PROJECTION_TYPE,
+            RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
@@ -473,6 +561,21 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                     "reconstruction_source": "runtime_event_store",
                     "rebuildable": True,
                     "authoritative_source": "runtime_event_store",
+                },
+            },
+            {
+                "projection_type": DECISION_EFFECTIVENESS_PROJECTION_TYPE,
+                "schema_version": DECISION_EFFECTIVENESS_SCHEMA_VERSION,
+                "builder_name": "DecisionEffectivenessProjectionBuilderService",
+                "reconstruction": {
+                    "projection_type": DECISION_EFFECTIVENESS_PROJECTION_TYPE,
+                    "reconstruction_source": (
+                        "decision_records,evaluation_records"
+                    ),
+                    "rebuildable": True,
+                    "authoritative_source": (
+                        "decision_records,runtime_evaluation_records"
+                    ),
                 },
             },
             {
@@ -542,6 +645,29 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 },
             },
             {
+                "projection_type": GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
+                "schema_version": GOVERNANCE_HEALTH_ROLLUP_SCHEMA_VERSION,
+                "builder_name": (
+                    "GovernanceHealthRollupProjectionBuilderService"
+                ),
+                "reconstruction": {
+                    "projection_type": GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
+                    "reconstruction_source": (
+                        "evaluation_records,"
+                        "recommendation_outcome_projection,"
+                        "decision_effectiveness_projection,"
+                        "policy_evaluation_overview_projection"
+                    ),
+                    "rebuildable": True,
+                    "authoritative_source": (
+                        "runtime_evaluation_records,"
+                        "planner_recommendations,"
+                        "decision_records,"
+                        "policies"
+                    ),
+                },
+            },
+            {
                 "projection_type": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
                 "schema_version": POLICY_EVALUATION_OVERVIEW_SCHEMA_VERSION,
                 "builder_name": "PolicyEvaluationOverviewProjectionBuilderService",
@@ -583,6 +709,27 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 },
             },
             {
+                "projection_type": RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+                "schema_version": RECOMMENDATION_OUTCOME_SCHEMA_VERSION,
+                "builder_name": (
+                    "RecommendationOutcomeProjectionBuilderService"
+                ),
+                "reconstruction": {
+                    "projection_type": RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+                    "reconstruction_source": (
+                        "planner_recommendations,"
+                        "recommendation_selection_records,"
+                        "evaluation_records"
+                    ),
+                    "rebuildable": True,
+                    "authoritative_source": (
+                        "planner_recommendations,"
+                        "decision_records,"
+                        "runtime_evaluation_records"
+                    ),
+                },
+            },
+            {
                 "projection_type": SESSION_DECISION_PROJECTION_TYPE,
                 "schema_version": SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
                 "builder_name": "SessionDecisionProjectionBuilderService",
@@ -598,6 +745,14 @@ def test_runtime_projection_endpoint_lists_types_without_building(
             {
                 "projection_name": ARTIFACT_LINEAGE_PROJECTION_TYPE,
                 "projection_version": ARTIFACT_LINEAGE_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
+                "projection_name": DECISION_EFFECTIVENESS_PROJECTION_TYPE,
+                "projection_version": DECISION_EFFECTIVENESS_SCHEMA_VERSION,
                 "latest_rebuild_status": None,
                 "latest_rebuild_started_at": None,
                 "latest_rebuild_completed_at": None,
@@ -652,6 +807,14 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 "latest_rebuild_duration_ms": None,
             },
             {
+                "projection_name": GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
+                "projection_version": GOVERNANCE_HEALTH_ROLLUP_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
                 "projection_name": POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
                 "projection_version": POLICY_EVALUATION_OVERVIEW_SCHEMA_VERSION,
                 "latest_rebuild_status": None,
@@ -676,6 +839,14 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 "latest_rebuild_duration_ms": None,
             },
             {
+                "projection_name": RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+                "projection_version": RECOMMENDATION_OUTCOME_SCHEMA_VERSION,
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
                 "projection_name": SESSION_DECISION_PROJECTION_TYPE,
                 "projection_version": (
                     SESSION_DECISION_PROJECTION_SCHEMA_VERSION
@@ -692,18 +863,21 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     )
     assert len(events) == 1
     assert events[0].metadata == {
-        "projection_type_count": 11,
+        "projection_type_count": 14,
         "projection_types": [
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
+            DECISION_EFFECTIVENESS_PROJECTION_TYPE,
             DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
             EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
             EVALUATION_SUMMARY_PROJECTION_TYPE,
             EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
+            GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
             POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
             POLICY_EVIDENCE_PROJECTION_TYPE,
             POLICY_SUMMARY_PROJECTION_TYPE,
+            RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "source": "projection_registry",
@@ -833,28 +1007,34 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
     } == {
         "projection_types": [
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
+            DECISION_EFFECTIVENESS_PROJECTION_TYPE,
             DECISION_LINEAGE_PROJECTION_TYPE,
             DECISION_PROJECTION_TYPE,
             EVALUATION_OUTCOME_ROLLUP_PROJECTION_TYPE,
             EVALUATION_SUMMARY_PROJECTION_TYPE,
             EVALUATION_TREND_PROJECTION_TYPE,
             GOVERNANCE_AUDIT_PROJECTION_TYPE,
+            GOVERNANCE_HEALTH_ROLLUP_PROJECTION_TYPE,
             POLICY_EVALUATION_OVERVIEW_PROJECTION_TYPE,
             POLICY_EVIDENCE_PROJECTION_TYPE,
             POLICY_SUMMARY_PROJECTION_TYPE,
+            RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
             artifact_lineage_projection_builder.schema_info.model_dump(),
+            decision_effectiveness_projection_builder_service.schema_info.model_dump(),
             decision_lineage_projection_builder.schema_info.model_dump(),
             decision_projection_builder_service.schema_info.model_dump(),
             evaluation_outcome_rollup_projection_builder_service.schema_info.model_dump(),
             evaluation_summary_projection_builder_service.schema_info.model_dump(),
             evaluation_trend_projection_builder_service.schema_info.model_dump(),
             governance_audit_projection_builder.schema_info.model_dump(),
+            governance_health_rollup_projection_builder_service.schema_info.model_dump(),
             policy_evaluation_overview_projection_builder_service.schema_info.model_dump(),
             policy_evidence_projection_builder_service.schema_info.model_dump(),
             policy_projection_builder_service.schema_info.model_dump(),
+            recommendation_outcome_projection_builder_service.schema_info.model_dump(),
             session_decision_projection_builder_service.schema_info.model_dump(),
         ],
     }

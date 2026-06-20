@@ -11,12 +11,15 @@ from app.services.query_executor_diagnostics_service import (
 
 
 EXPECTED_EXECUTABLE_QUERY_IDS = [
+    "runtime.decision_effectiveness",
     "runtime.evaluation_outcome_rollup",
     "runtime.evaluation_summary",
     "runtime.evaluation_trend",
+    "runtime.governance_health_rollup",
     "runtime.policy_evaluation_overview",
     "runtime.policy_evidence",
     "runtime.policy_summary",
+    "runtime.recommendation_outcome",
 ]
 
 
@@ -68,15 +71,15 @@ def test_query_executor_diagnostics_route_works() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["supported_query_count"] == 6
-    assert body["catalog_query_count"] == 15
+    assert body["supported_query_count"] == 9
+    assert body["catalog_query_count"] == 18
     assert "generated_at" in body
 
 
 def test_supported_query_count_is_correct() -> None:
     diagnostics = QueryExecutorDiagnosticsService().get_diagnostics()
 
-    assert diagnostics.supported_query_count == 6
+    assert diagnostics.supported_query_count == 9
 
 
 def test_executable_query_ids_include_expected_supported_surfaces() -> None:

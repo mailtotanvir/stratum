@@ -162,6 +162,7 @@ def test_default_registry_contracts_cover_v0_6_surfaces() -> None:
 
     assert names == [
         "artifact_lineage_projection",
+        "decision_effectiveness",
         "decision_lineage_projection",
         "decision_projection",
         "evaluation_outcome_rollup",
@@ -169,10 +170,12 @@ def test_default_registry_contracts_cover_v0_6_surfaces() -> None:
         "evaluation_trend",
         "explainability",
         "governance_audit_projection",
+        "governance_health_rollup",
         "operational_analytics",
         "policy_evaluation_overview",
         "policy_evidence",
         "policy_summary",
+        "recommendation_outcome",
         "runtime_intelligence",
         "runtime_reconstruction_view",
         "session_decision_projection",
@@ -184,9 +187,10 @@ def test_projection_registry_list_route() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["registered_projections_total"] == 15
+    assert body["registered_projections_total"] == 18
     assert [item["projection_name"] for item in body["projections"]] == [
         "artifact_lineage_projection",
+        "decision_effectiveness",
         "decision_lineage_projection",
         "decision_projection",
         "evaluation_outcome_rollup",
@@ -194,15 +198,17 @@ def test_projection_registry_list_route() -> None:
         "evaluation_trend",
         "explainability",
         "governance_audit_projection",
+        "governance_health_rollup",
         "operational_analytics",
         "policy_evaluation_overview",
         "policy_evidence",
         "policy_summary",
+        "recommendation_outcome",
         "runtime_intelligence",
         "runtime_reconstruction_view",
         "session_decision_projection",
     ]
-    assert body["observability_metrics"]["registered_projections_total"] == 15
+    assert body["observability_metrics"]["registered_projections_total"] == 18
 
 
 def test_projection_registry_detail_route() -> None:

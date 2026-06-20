@@ -19,6 +19,15 @@ class RecordingEvaluationService:
         return {"surface": "evaluation_summary", "filters": filters}
 
 
+class RecordingDecisionEffectivenessService:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def build(self):
+        self.calls += 1
+        return {"surface": "decision_effectiveness"}
+
+
 class RecordingOutcomeService:
     def __init__(self) -> None:
         self.calls: list[dict[str, object | None]] = []
@@ -35,6 +44,15 @@ class RecordingTrendService:
     def build(self, filters):
         self.calls.append(filters)
         return {"surface": "evaluation_trend", "filters": filters}
+
+
+class RecordingGovernanceHealthRollupService:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def build(self):
+        self.calls += 1
+        return {"surface": "governance_health_rollup"}
 
 
 class RecordingPolicyService:
@@ -65,9 +83,11 @@ class RecordingPolicyEvaluationOverviewService:
 
 
 def service_with_recorders():
+    decision_effectiveness = RecordingDecisionEffectivenessService()
     evaluation = RecordingEvaluationService()
     outcome = RecordingOutcomeService()
     trend = RecordingTrendService()
+    governance_health = RecordingGovernanceHealthRollupService()
     policy = RecordingPolicyService()
     evidence = RecordingPolicyEvidenceService()
     overview = RecordingPolicyEvaluationOverviewService()
@@ -79,12 +99,24 @@ def service_with_recorders():
         policy_service=policy,
         policy_evidence_service=evidence,
         policy_evaluation_overview_service=overview,
+        decision_effectiveness_service=decision_effectiveness,
+        governance_health_rollup_service=governance_health,
     )
-    return service, evaluation, outcome, trend, policy, evidence, overview
+    return (
+        service,
+        decision_effectiveness,
+        evaluation,
+        outcome,
+        trend,
+        governance_health,
+        policy,
+        evidence,
+        overview,
+    )
 
 
 def test_valid_query_dispatch() -> None:
-    service, evaluation, *_ = service_with_recorders()
+    service, _, evaluation, *_ = service_with_recorders()
 
     result = service.execute(
         QueryExecutionRequest(
@@ -148,7 +180,7 @@ def test_catalog_valid_but_unsupported_query_is_rejected() -> None:
 
 
 def test_filters_forwarded_correctly() -> None:
-    service, _, _, trend, *_ = service_with_recorders()
+    service, _, _, _, trend, *_ = service_with_recorders()
 
     service.execute(
         QueryExecutionRequest(
@@ -167,10 +199,23 @@ def test_filters_forwarded_correctly() -> None:
 
 
 def test_supported_projections_execute_correctly() -> None:
-    service, _, outcome, trend, policy, evidence, overview = (
+    (
+        service,
+        decision_effectiveness,
+        _,
+        outcome,
+        trend,
+        governance_health,
+        policy,
+        evidence,
+        overview,
+    ) = (
         service_with_recorders()
     )
 
+    assert service.execute(
+        QueryExecutionRequest(query_id="decision_effectiveness")
+    ).result == {"surface": "decision_effectiveness"}
     assert service.execute(
         QueryExecutionRequest(query_id="evaluation_outcome_rollup")
     ).result == {
@@ -189,6 +234,9 @@ def test_supported_projections_execute_correctly() -> None:
         "filters": {"granularity": None},
     }
     assert service.execute(
+        QueryExecutionRequest(query_id="governance_health_rollup")
+    ).result == {"surface": "governance_health_rollup"}
+    assert service.execute(
         QueryExecutionRequest(query_id="policy_summary")
     ).result == [{"surface": "policy_summary"}]
     assert service.execute(
@@ -198,8 +246,10 @@ def test_supported_projections_execute_correctly() -> None:
         QueryExecutionRequest(query_id="policy_evaluation_overview")
     ).result == {"surface": "policy_evaluation_overview"}
 
+    assert decision_effectiveness.calls == 1
     assert len(outcome.calls) == 1
     assert len(trend.calls) == 1
+    assert governance_health.calls == 1
     assert len(policy.calls) == 1
     assert len(evidence.calls) == 1
     assert overview.calls == 1

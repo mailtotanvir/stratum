@@ -10,6 +10,7 @@ from app.services.query_manifest_service import QueryManifestService
 
 EXPECTED_PROJECTION_TYPES = [
     "artifact_lineage_projection",
+    "decision_effectiveness",
     "decision_lineage_projection",
     "decision_projection",
     "evaluation_outcome_rollup",
@@ -17,10 +18,12 @@ EXPECTED_PROJECTION_TYPES = [
     "evaluation_trend",
     "explainability",
     "governance_audit_projection",
+    "governance_health_rollup",
     "operational_analytics",
     "policy_evaluation_overview",
     "policy_evidence",
     "policy_summary",
+    "recommendation_outcome",
     "runtime_intelligence",
     "runtime_reconstruction_view",
     "session_decision_projection",
@@ -41,7 +44,7 @@ def test_query_manifest_route_works() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["schema_version"] == "1.0"
-    assert body["query_count"] == 15
+    assert body["query_count"] == 18
     assert body["health_status"] == "healthy"
     assert "generated_at" in body
 
@@ -67,11 +70,27 @@ def test_query_manifest_categories_summarize_routes() -> None:
         "/runtime/policy-evidence",
         "/runtime/policy-projections",
     ]
+    assert categories["decisions"].query_count == 4
+    assert categories["decisions"].routes == [
+        "/runtime/decision-effectiveness",
+        "/runtime/decision-lineage",
+        "/runtime/projections/decision_projection",
+        "/runtime/projections/session_decision_projection",
+    ]
     assert categories["evaluations"].query_count == 3
     assert categories["evaluations"].routes == [
         "/runtime/evaluation-outcome-rollup",
         "/runtime/evaluation-summary",
         "/runtime/evaluation-trend",
+    ]
+    assert categories["governance"].query_count == 2
+    assert categories["governance"].routes == [
+        "/runtime/governance-health-rollup",
+        "/runtime/governance/audit",
+    ]
+    assert categories["recommendations"].query_count == 1
+    assert categories["recommendations"].routes == [
+        "/runtime/recommendation-outcomes"
     ]
 
 
@@ -129,6 +148,13 @@ def test_expected_projections_appear_in_manifest() -> None:
         entry.projection_type: entry
         for entry in manifest.entries
     }
+    assert entries["decision_effectiveness"].query_id == (
+        "runtime.decision_effectiveness"
+    )
+    assert entries["decision_effectiveness"].route == (
+        "/runtime/decision-effectiveness"
+    )
+    assert entries["decision_effectiveness"].supported_filters == []
     assert entries["policy_evidence"].supported_filters == [
         "policy_id",
         "evaluation_id",
@@ -160,6 +186,13 @@ def test_expected_projections_appear_in_manifest() -> None:
     assert entries["evaluation_trend"].query_id == "runtime.evaluation_trend"
     assert entries["evaluation_trend"].route == "/runtime/evaluation-trend"
     assert entries["evaluation_trend"].supported_filters == ["granularity"]
+    assert entries["governance_health_rollup"].query_id == (
+        "runtime.governance_health_rollup"
+    )
+    assert entries["governance_health_rollup"].route == (
+        "/runtime/governance-health-rollup"
+    )
+    assert entries["governance_health_rollup"].supported_filters == []
     assert entries["policy_evaluation_overview"].query_id == (
         "runtime.policy_evaluation_overview"
     )
@@ -167,6 +200,13 @@ def test_expected_projections_appear_in_manifest() -> None:
         "/runtime/policy-evaluation-overview"
     )
     assert entries["policy_evaluation_overview"].supported_filters == []
+    assert entries["recommendation_outcome"].query_id == (
+        "runtime.recommendation_outcome"
+    )
+    assert entries["recommendation_outcome"].route == (
+        "/runtime/recommendation-outcomes"
+    )
+    assert entries["recommendation_outcome"].supported_filters == []
 
 
 def test_query_manifest_health_status_is_healthy_when_catalog_is_healthy() -> None:

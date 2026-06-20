@@ -272,19 +272,22 @@ def test_all_projections_drift_route_is_deterministic() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["projection_count"] == 11
+    assert body["projection_count"] == 14
     assert [
         result["projection_name"] for result in body["projections"]
     ] == [
         "artifact_lineage_projection",
+        "decision_effectiveness",
         "decision_lineage_projection",
         "decision_projection",
         "evaluation_outcome_rollup",
         "evaluation_summary",
         "evaluation_trend",
         "governance_audit_projection",
+        "governance_health_rollup",
         "policy_evaluation_overview",
         "policy_evidence",
         "policy_summary",
+        "recommendation_outcome",
         "session_decision_projection",
     ]

@@ -10,6 +10,7 @@ from app.services.query_catalog_service import QueryCatalogService
 
 EXPECTED_PROJECTION_TYPES = [
     "artifact_lineage_projection",
+    "decision_effectiveness",
     "decision_lineage_projection",
     "decision_projection",
     "evaluation_outcome_rollup",
@@ -17,10 +18,12 @@ EXPECTED_PROJECTION_TYPES = [
     "evaluation_trend",
     "explainability",
     "governance_audit_projection",
+    "governance_health_rollup",
     "operational_analytics",
     "policy_evaluation_overview",
     "policy_evidence",
     "policy_summary",
+    "recommendation_outcome",
     "runtime_intelligence",
     "runtime_reconstruction_view",
     "session_decision_projection",
@@ -45,6 +48,10 @@ def test_query_catalog_route_metadata_is_present() -> None:
         for entry in QueryCatalogService().get_catalog().entries
     }
 
+    assert entries["decision_effectiveness"].route == (
+        "/runtime/decision-effectiveness"
+    )
+    assert entries["decision_effectiveness"].filters == []
     assert entries["evaluation_summary"].route == "/runtime/evaluation-summary"
     assert entries["evaluation_summary"].filters == [
         "target_type",
@@ -65,6 +72,10 @@ def test_query_catalog_route_metadata_is_present() -> None:
     assert entries["evaluation_trend"].filters == [
         "granularity",
     ]
+    assert entries["governance_health_rollup"].route == (
+        "/runtime/governance-health-rollup"
+    )
+    assert entries["governance_health_rollup"].filters == []
     assert entries["policy_evaluation_overview"].route == (
         "/runtime/policy-evaluation-overview"
     )
@@ -78,6 +89,10 @@ def test_query_catalog_route_metadata_is_present() -> None:
         "target_id",
         "evidence_type",
     ]
+    assert entries["recommendation_outcome"].route == (
+        "/runtime/recommendation-outcomes"
+    )
+    assert entries["recommendation_outcome"].filters == []
 
 
 def test_query_catalog_categories_are_present() -> None:
@@ -91,6 +106,7 @@ def test_query_catalog_categories_are_present() -> None:
         "decisions",
         "evaluations",
         "policies",
+        "recommendations",
         "governance",
         "observability",
     }.issubset(categories)
@@ -171,6 +187,18 @@ def test_projection_registry_exposes_query_catalog_metadata() -> None:
         "/runtime/policy-evaluation-overview"
     )
     assert entries["policy_evaluation_overview"].supported_filters == []
+    assert entries["governance_health_rollup"].route == (
+        "/runtime/governance-health-rollup"
+    )
+    assert entries["governance_health_rollup"].supported_filters == []
+    assert entries["decision_effectiveness"].route == (
+        "/runtime/decision-effectiveness"
+    )
+    assert entries["decision_effectiveness"].supported_filters == []
+    assert entries["recommendation_outcome"].route == (
+        "/runtime/recommendation-outcomes"
+    )
+    assert entries["recommendation_outcome"].supported_filters == []
 
 
 def test_query_catalog_endpoint_returns_all_expected_projection_types() -> None:

@@ -7,6 +7,10 @@ from app.models.query_executor import (
     QueryExecutionRequest,
     QueryExecutionResult,
 )
+from app.services.decision_effectiveness_projection_builder_service import (
+    DecisionEffectivenessProjectionBuilderService,
+    decision_effectiveness_projection_builder_service,
+)
 from app.services.evaluation_outcome_rollup_projection_builder_service import (
     EvaluationOutcomeRollupProjectionBuilderService,
     evaluation_outcome_rollup_projection_builder_service,
@@ -18,6 +22,10 @@ from app.services.evaluation_summary_projection_builder_service import (
 from app.services.evaluation_trend_projection_v2_builder_service import (
     EvaluationTrendProjectionBuilderService,
     evaluation_trend_projection_builder_service,
+)
+from app.services.governance_health_rollup_projection_builder_service import (
+    GovernanceHealthRollupProjectionBuilderService,
+    governance_health_rollup_projection_builder_service,
 )
 from app.services.policy_evaluation_overview_projection_service import (
     PolicyEvaluationOverviewProjectionService,
@@ -34,6 +42,10 @@ from app.services.policy_projection_service import (
 from app.services.query_catalog_service import (
     QueryCatalogService,
     query_catalog_service,
+)
+from app.services.recommendation_outcome_projection_builder_service import (
+    RecommendationOutcomeProjectionBuilderService,
+    recommendation_outcome_projection_builder_service,
 )
 
 
@@ -61,8 +73,21 @@ class QueryExecutorService:
         policy_evaluation_overview_service: (
             PolicyEvaluationOverviewProjectionService | None
         ) = None,
+        recommendation_outcome_service: (
+            RecommendationOutcomeProjectionBuilderService | None
+        ) = None,
+        decision_effectiveness_service: (
+            DecisionEffectivenessProjectionBuilderService | None
+        ) = None,
+        governance_health_rollup_service: (
+            GovernanceHealthRollupProjectionBuilderService | None
+        ) = None,
     ) -> None:
         self._catalog_service = catalog_service or query_catalog_service
+        self._decision_effectiveness_service = (
+            decision_effectiveness_service
+            or decision_effectiveness_projection_builder_service
+        )
         self._evaluation_service = (
             evaluation_service or evaluation_summary_projection_builder_service
         )
@@ -74,6 +99,10 @@ class QueryExecutorService:
             evaluation_trend_service
             or evaluation_trend_projection_builder_service
         )
+        self._governance_health_rollup_service = (
+            governance_health_rollup_service
+            or governance_health_rollup_projection_builder_service
+        )
         self._policy_service = policy_service or policy_projection_service
         self._policy_evidence_service = (
             policy_evidence_service or policy_evidence_projection_service
@@ -81,6 +110,10 @@ class QueryExecutorService:
         self._policy_evaluation_overview_service = (
             policy_evaluation_overview_service
             or policy_evaluation_overview_projection_service
+        )
+        self._recommendation_outcome_service = (
+            recommendation_outcome_service
+            or recommendation_outcome_projection_builder_service
         )
 
     def execute(
@@ -120,20 +153,31 @@ class QueryExecutorService:
         self,
     ) -> dict[str, Callable[[dict[str, Any]], Any]]:
         return {
+            "decision_effectiveness": self._execute_decision_effectiveness,
             "evaluation_summary": self._execute_evaluation_summary,
             "evaluation_outcome_rollup": (
                 self._execute_evaluation_outcome_rollup
             ),
             "evaluation_trend": self._execute_evaluation_trend,
+            "governance_health_rollup": (
+                self._execute_governance_health_rollup
+            ),
             "policy_summary": self._execute_policy_summary,
             "policy_evidence": self._execute_policy_evidence,
             "policy_evaluation_overview": (
                 self._execute_policy_evaluation_overview
             ),
+            "recommendation_outcome": self._execute_recommendation_outcome,
         }
 
     def supported_projection_types(self) -> list[str]:
         return sorted(self._dispatch_table())
+
+    def _execute_decision_effectiveness(
+        self,
+        filters: dict[str, Any],
+    ) -> Any:
+        return self._decision_effectiveness_service.build()
 
     def _execute_evaluation_summary(
         self,
@@ -171,6 +215,12 @@ class QueryExecutorService:
             }
         )
 
+    def _execute_governance_health_rollup(
+        self,
+        filters: dict[str, Any],
+    ) -> Any:
+        return self._governance_health_rollup_service.build()
+
     def _execute_policy_summary(
         self,
         filters: dict[str, Any],
@@ -201,6 +251,12 @@ class QueryExecutorService:
             self._policy_evaluation_overview_service
             .get_policy_evaluation_overview()
         )
+
+    def _execute_recommendation_outcome(
+        self,
+        filters: dict[str, Any],
+    ) -> Any:
+        return self._recommendation_outcome_service.build()
 
 
 query_executor_service = QueryExecutorService()
