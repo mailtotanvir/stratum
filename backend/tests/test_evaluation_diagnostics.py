@@ -81,13 +81,13 @@ def test_diagnostics_lists_registered_evaluation_projections(tmp_path) -> None:
     assert projection_by_type["evaluation_summary"].rebuildable is True
     assert projection_by_type["evaluation_summary"].persisted is False
     assert projection_by_type["evaluation_summary"].route == (
-        "/runtime/evaluation-projections"
+        "/runtime/evaluation-summary"
     )
     assert projection_by_type["evaluation_outcome_rollup"].route == (
-        "/runtime/evaluation-outcomes"
+        "/runtime/evaluation-outcome-rollup"
     )
     assert projection_by_type["evaluation_trend"].route == (
-        "/runtime/evaluation-trends"
+        "/runtime/evaluation-trend"
     )
 
 

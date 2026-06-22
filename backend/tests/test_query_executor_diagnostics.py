@@ -8,6 +8,8 @@ from app.services.query_catalog_service import QueryCatalogService
 from app.services.query_executor_diagnostics_service import (
     QueryExecutorDiagnosticsService,
 )
+from app.services.query_manifest_service import QueryManifestService
+from app.services.projection_registry_service import projection_registry_service
 
 
 EXPECTED_EXECUTABLE_QUERY_IDS = [
@@ -21,6 +23,54 @@ EXPECTED_EXECUTABLE_QUERY_IDS = [
     "runtime.policy_summary",
     "runtime.recommendation_outcome",
 ]
+
+GOVERNANCE_INTELLIGENCE_QUERY_METADATA = {
+    "decision_effectiveness": {
+        "route": "/runtime/decision-effectiveness",
+        "category": "decisions",
+        "filters": [],
+    },
+    "evaluation_outcome_rollup": {
+        "route": "/runtime/evaluation-outcome-rollup",
+        "category": "evaluations",
+        "filters": [
+            "target_type",
+            "target_id",
+            "evaluation_type",
+            "outcome",
+        ],
+    },
+    "evaluation_summary": {
+        "route": "/runtime/evaluation-summary",
+        "category": "evaluations",
+        "filters": [
+            "target_type",
+            "target_id",
+            "evaluation_type",
+            "outcome",
+        ],
+    },
+    "evaluation_trend": {
+        "route": "/runtime/evaluation-trend",
+        "category": "evaluations",
+        "filters": ["granularity"],
+    },
+    "governance_health_rollup": {
+        "route": "/runtime/governance-health-rollup",
+        "category": "governance",
+        "filters": [],
+    },
+    "policy_evaluation_overview": {
+        "route": "/runtime/policy-evaluation-overview",
+        "category": "policies",
+        "filters": [],
+    },
+    "recommendation_outcome": {
+        "route": "/runtime/recommendation-outcomes",
+        "category": "recommendations",
+        "filters": [],
+    },
+}
 
 
 class StaticCatalogService:
@@ -86,6 +136,70 @@ def test_executable_query_ids_include_expected_supported_surfaces() -> None:
     diagnostics = QueryExecutorDiagnosticsService().get_diagnostics()
 
     assert diagnostics.executable_query_ids == EXPECTED_EXECUTABLE_QUERY_IDS
+
+
+def test_governance_intelligence_queries_are_discoverable() -> None:
+    diagnostics = QueryExecutorDiagnosticsService().get_diagnostics()
+    catalog = QueryCatalogService().get_catalog()
+    catalog_by_projection = {
+        entry.projection_type: entry
+        for entry in catalog.entries
+    }
+
+    for projection_type, expected in (
+        GOVERNANCE_INTELLIGENCE_QUERY_METADATA.items()
+    ):
+        query_id = f"runtime.{projection_type}"
+
+        assert query_id in diagnostics.executable_query_ids
+        assert query_id not in diagnostics.unsupported_catalog_query_ids
+        assert query_id not in diagnostics.missing_catalog_query_ids
+        assert projection_type in catalog_by_projection
+        assert catalog_by_projection[projection_type].route == (
+            expected["route"]
+        )
+        assert catalog_by_projection[projection_type].category == (
+            expected["category"]
+        )
+        assert catalog_by_projection[projection_type].filters == (
+            expected["filters"]
+        )
+
+
+def test_governance_intelligence_query_metadata_is_consistent() -> None:
+    catalog = QueryCatalogService().get_catalog()
+    manifest = QueryManifestService().get_manifest()
+    catalog_by_projection = {
+        entry.projection_type: entry
+        for entry in catalog.entries
+    }
+    manifest_by_projection = {
+        entry.projection_type: entry
+        for entry in manifest.entries
+    }
+
+    for projection_type, expected in (
+        GOVERNANCE_INTELLIGENCE_QUERY_METADATA.items()
+    ):
+        registry_entry = projection_registry_service.get(projection_type)
+        catalog_entry = catalog_by_projection[projection_type]
+        manifest_entry = manifest_by_projection[projection_type]
+
+        assert registry_entry.route == expected["route"]
+        assert registry_entry.category == expected["category"]
+        assert registry_entry.supported_filters == expected["filters"]
+        assert registry_entry.capabilities.reconstructable is True
+        assert registry_entry.capabilities.replayable is True
+        assert catalog_entry.query_id == f"runtime.{projection_type}"
+        assert catalog_entry.route == registry_entry.route
+        assert catalog_entry.category == registry_entry.category
+        assert catalog_entry.filters == registry_entry.supported_filters
+        assert manifest_entry.query_id == catalog_entry.query_id
+        assert manifest_entry.route == catalog_entry.route
+        assert manifest_entry.category == catalog_entry.category
+        assert manifest_entry.supported_filters == catalog_entry.filters
+        assert manifest_entry.health_status == "healthy"
+        assert manifest_entry.issues == []
 
 
 def test_unsupported_catalog_query_ids_are_reported() -> None:

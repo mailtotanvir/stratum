@@ -250,7 +250,8 @@ def test_diagnostics_lists_registered_policy_summary_projection(
     assert overview.rebuildable is True
     assert overview.persisted is False
     assert overview.source == (
-        "policies/policy_decisions/policy_violations/evaluations"
+        "policies/policy_decisions/policy_violations/"
+        "runtime_evaluation_records"
     )
     assert overview.route == "/runtime/policy-evaluation-overview"
     summary = projection_by_type["policy_summary"]
