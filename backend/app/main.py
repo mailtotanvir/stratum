@@ -10,6 +10,14 @@ from app.routes.decision_effectiveness_projections import (
 from app.routes.evaluation_diagnostics import (
     router as evaluation_diagnostics_router,
 )
+from app.routes.evaluation_coverage import router as evaluation_coverage_router
+from app.routes.evaluation_drift import router as evaluation_drift_router
+from app.routes.evaluation_intelligence_overview import (
+    router as evaluation_intelligence_overview_router,
+)
+from app.routes.evaluation_reconstruction import (
+    router as evaluation_reconstruction_router,
+)
 from app.routes.evaluation_outcome_projections import (
     router as evaluation_outcome_projections_router,
 )
@@ -22,7 +30,9 @@ from app.routes.evaluation_trend_projections import (
 from app.routes.evaluation_policy_diagnostics import (
     router as evaluation_policy_diagnostics_router,
 )
+from app.routes.evaluation_lineage import router as evaluation_lineage_router
 from app.routes.evaluation_records import router as evaluation_records_router
+from app.routes.evaluation_registry import router as evaluation_registry_router
 from app.routes.evaluations import router as evaluations_router
 from app.routes.governance import router as governance_router
 from app.routes.governance_health_rollup_projections import (
@@ -81,12 +91,18 @@ app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
 app.include_router(decision_effectiveness_projections_router)
 app.include_router(decision_lineage_router)
+app.include_router(evaluation_coverage_router)
 app.include_router(evaluation_diagnostics_router)
+app.include_router(evaluation_drift_router)
+app.include_router(evaluation_intelligence_overview_router)
+app.include_router(evaluation_reconstruction_router)
 app.include_router(evaluation_outcome_projections_router)
 app.include_router(evaluation_projections_router)
 app.include_router(evaluation_trend_projections_router)
 app.include_router(evaluation_policy_diagnostics_router)
+app.include_router(evaluation_lineage_router)
 app.include_router(evaluation_records_router)
+app.include_router(evaluation_registry_router)
 app.include_router(evaluations_router)
 app.include_router(explainability_router)
 app.include_router(governance_router)

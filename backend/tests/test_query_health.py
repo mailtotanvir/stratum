@@ -44,16 +44,16 @@ def test_query_health_route_works() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["query_surface_count"] == 18
-    assert body["registered_projection_count"] == 18
+    assert body["query_surface_count"] == 23
+    assert body["registered_projection_count"] == 23
     assert "generated_at" in body
 
 
 def test_healthy_catalog_returns_no_unhealthy_entries() -> None:
     health = QueryHealthService(QueryCatalogService()).get_health()
 
-    assert health.query_surface_count == 18
-    assert health.registered_projection_count == 18
+    assert health.query_surface_count == 23
+    assert health.registered_projection_count == 23
     assert health.missing_route_count == 0
     assert health.missing_filter_metadata_count == 0
     assert health.duplicate_route_count == 0

@@ -13,7 +13,12 @@ EXPECTED_PROJECTION_TYPES = [
     "decision_effectiveness",
     "decision_lineage_projection",
     "decision_projection",
+    "evaluation_coverage",
+    "evaluation_drift",
+    "evaluation_intelligence_overview",
+    "evaluation_lineage",
     "evaluation_outcome_rollup",
+    "evaluation_registry",
     "evaluation_summary",
     "evaluation_trend",
     "explainability",
@@ -44,7 +49,7 @@ def test_query_manifest_route_works() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["schema_version"] == "1.0"
-    assert body["query_count"] == 18
+    assert body["query_count"] == 23
     assert body["health_status"] == "healthy"
     assert "generated_at" in body
 
@@ -77,8 +82,13 @@ def test_query_manifest_categories_summarize_routes() -> None:
         "/runtime/projections/decision_projection",
         "/runtime/projections/session_decision_projection",
     ]
-    assert categories["evaluations"].query_count == 3
+    assert categories["evaluations"].query_count == 8
     assert categories["evaluations"].routes == [
+        "/evaluation-coverage/projection",
+        "/evaluation-drift/projection",
+        "/evaluation-intelligence-overview/projection",
+        "/evaluation-lineage/projection",
+        "/evaluation-registry/projection",
         "/runtime/evaluation-outcome-rollup",
         "/runtime/evaluation-summary",
         "/runtime/evaluation-trend",
@@ -163,6 +173,34 @@ def test_expected_projections_appear_in_manifest() -> None:
         "target_id",
         "evidence_type",
     ]
+    assert entries["evaluation_coverage"].query_id == (
+        "runtime.evaluation_coverage"
+    )
+    assert entries["evaluation_coverage"].route == (
+        "/evaluation-coverage/projection"
+    )
+    assert entries["evaluation_coverage"].supported_filters == []
+    assert entries["evaluation_drift"].query_id == (
+        "runtime.evaluation_drift"
+    )
+    assert entries["evaluation_drift"].route == (
+        "/evaluation-drift/projection"
+    )
+    assert entries["evaluation_drift"].supported_filters == []
+    assert entries["evaluation_intelligence_overview"].query_id == (
+        "runtime.evaluation_intelligence_overview"
+    )
+    assert entries["evaluation_intelligence_overview"].route == (
+        "/evaluation-intelligence-overview/projection"
+    )
+    assert entries["evaluation_intelligence_overview"].supported_filters == []
+    assert entries["evaluation_lineage"].query_id == (
+        "runtime.evaluation_lineage"
+    )
+    assert entries["evaluation_lineage"].route == (
+        "/evaluation-lineage/projection"
+    )
+    assert entries["evaluation_lineage"].supported_filters == []
     assert entries["evaluation_summary"].query_id == "runtime.evaluation_summary"
     assert entries["evaluation_summary"].route == "/runtime/evaluation-summary"
     assert entries["evaluation_summary"].supported_filters == [
@@ -183,6 +221,13 @@ def test_expected_projections_appear_in_manifest() -> None:
         "evaluation_type",
         "outcome",
     ]
+    assert entries["evaluation_registry"].query_id == (
+        "runtime.evaluation_registry"
+    )
+    assert entries["evaluation_registry"].route == (
+        "/evaluation-registry/projection"
+    )
+    assert entries["evaluation_registry"].supported_filters == []
     assert entries["evaluation_trend"].query_id == "runtime.evaluation_trend"
     assert entries["evaluation_trend"].route == "/runtime/evaluation-trend"
     assert entries["evaluation_trend"].supported_filters == ["granularity"]

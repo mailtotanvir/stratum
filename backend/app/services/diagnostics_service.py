@@ -14,6 +14,10 @@ from app.services.decision_evidence_service import (
 )
 from app.services.decision_trail_service import DecisionTrailService
 from app.services.event_service import EventService, event_service
+from app.services.evaluation_diagnostics_service import (
+    EvaluationDiagnosticsService,
+    evaluation_diagnostics_service,
+)
 from app.services.decision_record_service import (
     DecisionRecordService,
     decision_record_service,
@@ -63,6 +67,7 @@ class DiagnosticsService:
         decision_trails: DecisionTrailService | None = None,
         reconstruction: ReconstructionService | None = None,
         governance: GovernanceService | None = None,
+        evaluation_diagnostics: EvaluationDiagnosticsService | None = None,
     ) -> None:
         self._events = events or event_service
         self._tasks = tasks or task_service
@@ -71,6 +76,9 @@ class DiagnosticsService:
         self._decisions = decisions or decision_record_service
         self._decision_evidence = decision_evidence or decision_evidence_service
         self._governance = governance or GovernanceService(self._events)
+        self._evaluation_diagnostics = (
+            evaluation_diagnostics or evaluation_diagnostics_service
+        )
         self._reconstruction = reconstruction or ReconstructionService(
             events=self._events,
             tasks=self._tasks,
@@ -425,6 +433,8 @@ class DiagnosticsService:
         decision_evidence_health = self.decision_evidence_health()
         decision_trail_health = self.decision_trail_health()
         governance_health = self.governance_health()
+        evaluation_health = self._evaluation_diagnostics.summary()
+        evaluation_reconstruction = self._evaluation_reconstruction_summary()
         task_consistency = self._reconstruction.task_consistency_health()
         proposal_consistency = self._reconstruction.proposal_consistency_health()
 
@@ -489,6 +499,30 @@ class DiagnosticsService:
                     "status": governance_health["error_budget"]["status"],
                 },
             },
+            "evaluations": evaluation_health,
+            "evaluation_reconstruction": evaluation_reconstruction,
+        }
+
+    @staticmethod
+    def _evaluation_reconstruction_summary() -> dict[str, int | str]:
+        from app.services.evaluation_reconstruction_service import (
+            evaluation_reconstruction_service,
+        )
+
+        reconstruction = evaluation_reconstruction_service.inspect()
+        return {
+            "projections_rebuildable": sum(
+                1
+                for projection in reconstruction.projections
+                if projection.rebuild_supported
+            ),
+            "successful_reconstructions": (
+                reconstruction.successful_reconstructions
+            ),
+            "failed_reconstructions": reconstruction.failed_reconstructions,
+            "replay_validation_status": (
+                reconstruction.replay_validation_status
+            ),
         }
 
     def _task_health(self) -> dict[str, Any]:

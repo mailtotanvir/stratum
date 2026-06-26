@@ -14,6 +14,9 @@ from app.services.projection_registry_service import projection_registry_service
 
 EXPECTED_EXECUTABLE_QUERY_IDS = [
     "runtime.decision_effectiveness",
+    "runtime.evaluation_coverage",
+    "runtime.evaluation_drift",
+    "runtime.evaluation_intelligence_overview",
     "runtime.evaluation_outcome_rollup",
     "runtime.evaluation_summary",
     "runtime.evaluation_trend",
@@ -121,15 +124,15 @@ def test_query_executor_diagnostics_route_works() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["supported_query_count"] == 9
-    assert body["catalog_query_count"] == 18
+    assert body["supported_query_count"] == 12
+    assert body["catalog_query_count"] == 23
     assert "generated_at" in body
 
 
 def test_supported_query_count_is_correct() -> None:
     diagnostics = QueryExecutorDiagnosticsService().get_diagnostics()
 
-    assert diagnostics.supported_query_count == 9
+    assert diagnostics.supported_query_count == 12
 
 
 def test_executable_query_ids_include_expected_supported_surfaces() -> None:
@@ -209,6 +212,8 @@ def test_unsupported_catalog_query_ids_are_reported() -> None:
         "runtime.artifact_lineage_projection",
         "runtime.decision_lineage_projection",
         "runtime.decision_projection",
+        "runtime.evaluation_lineage",
+        "runtime.evaluation_registry",
         "runtime.explainability",
         "runtime.governance_audit_projection",
         "runtime.operational_analytics",

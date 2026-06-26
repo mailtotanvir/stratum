@@ -15,6 +15,18 @@ from app.services.evaluation_outcome_rollup_projection_builder_service import (
     EvaluationOutcomeRollupProjectionBuilderService,
     evaluation_outcome_rollup_projection_builder_service,
 )
+from app.services.evaluation_coverage_projection_builder_service import (
+    EvaluationCoverageProjectionBuilderService,
+    evaluation_coverage_projection_builder_service,
+)
+from app.services.evaluation_drift_projection_builder_service import (
+    EvaluationDriftProjectionBuilderService,
+    evaluation_drift_projection_builder_service,
+)
+from app.services.evaluation_intelligence_overview_projection_builder_service import (
+    EvaluationIntelligenceOverviewProjectionBuilderService,
+    evaluation_intelligence_overview_projection_builder_service,
+)
 from app.services.evaluation_summary_projection_builder_service import (
     EvaluationSummaryProjectionBuilderService,
     evaluation_summary_projection_builder_service,
@@ -63,6 +75,15 @@ class QueryExecutorService:
         catalog_service: QueryCatalogService | None = None,
         evaluation_service: EvaluationSummaryProjectionBuilderService
         | None = None,
+        evaluation_coverage_service: (
+            EvaluationCoverageProjectionBuilderService | None
+        ) = None,
+        evaluation_drift_service: (
+            EvaluationDriftProjectionBuilderService | None
+        ) = None,
+        evaluation_intelligence_overview_service: (
+            EvaluationIntelligenceOverviewProjectionBuilderService | None
+        ) = None,
         evaluation_outcome_service: (
             EvaluationOutcomeRollupProjectionBuilderService | None
         ) = None,
@@ -90,6 +111,18 @@ class QueryExecutorService:
         )
         self._evaluation_service = (
             evaluation_service or evaluation_summary_projection_builder_service
+        )
+        self._evaluation_coverage_service = (
+            evaluation_coverage_service
+            or evaluation_coverage_projection_builder_service
+        )
+        self._evaluation_drift_service = (
+            evaluation_drift_service
+            or evaluation_drift_projection_builder_service
+        )
+        self._evaluation_intelligence_overview_service = (
+            evaluation_intelligence_overview_service
+            or evaluation_intelligence_overview_projection_builder_service
         )
         self._evaluation_outcome_service = (
             evaluation_outcome_service
@@ -154,6 +187,11 @@ class QueryExecutorService:
     ) -> dict[str, Callable[[dict[str, Any]], Any]]:
         return {
             "decision_effectiveness": self._execute_decision_effectiveness,
+            "evaluation_coverage": self._execute_evaluation_coverage,
+            "evaluation_drift": self._execute_evaluation_drift,
+            "evaluation_intelligence_overview": (
+                self._execute_evaluation_intelligence_overview
+            ),
             "evaluation_summary": self._execute_evaluation_summary,
             "evaluation_outcome_rollup": (
                 self._execute_evaluation_outcome_rollup
@@ -178,6 +216,24 @@ class QueryExecutorService:
         filters: dict[str, Any],
     ) -> Any:
         return self._decision_effectiveness_service.build()
+
+    def _execute_evaluation_coverage(
+        self,
+        filters: dict[str, Any],
+    ) -> Any:
+        return self._evaluation_coverage_service.build()
+
+    def _execute_evaluation_drift(
+        self,
+        filters: dict[str, Any],
+    ) -> Any:
+        return self._evaluation_drift_service.build()
+
+    def _execute_evaluation_intelligence_overview(
+        self,
+        filters: dict[str, Any],
+    ) -> Any:
+        return self._evaluation_intelligence_overview_service.build()
 
     def _execute_evaluation_summary(
         self,

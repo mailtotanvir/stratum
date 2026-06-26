@@ -328,6 +328,7 @@ def list_runtime_sessions(task_id: str | None = None) -> list[RuntimeSession]:
     ]
 
 
+@router.get("/runtime/projection-diagnostics")
 @router.get("/runtime/projections")
 def list_runtime_projection_types() -> RuntimeProjectionTypes:
     projection_types = projection_registry.list_projection_types()

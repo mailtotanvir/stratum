@@ -59,6 +59,43 @@ ARTIFACT_LINEAGE_REPLAY_EVENT_TYPES = frozenset(
     }
 )
 
+EVALUATION_REGISTRY_REPLAY_EVENT_TYPES = frozenset(
+    {
+        EventType.EVALUATION_DEFINITION_REGISTERED,
+        EventType.EVALUATION_SUITE_REGISTERED,
+    }
+)
+
+EVALUATION_LINEAGE_REPLAY_EVENT_TYPES = frozenset(
+    {
+        EventType.EVALUATION_LINEAGE_RECORDED,
+        EventType.EVALUATION_LINEAGE_EVIDENCE_RECORDED,
+    }
+)
+
+EVALUATION_COVERAGE_REPLAY_EVENT_TYPES = frozenset(
+    {
+        EventType.EVALUATION_COVERAGE_TARGET_REGISTERED,
+        EventType.EVALUATION_COVERAGE_MAPPING_REGISTERED,
+    }
+)
+
+EVALUATION_DRIFT_REPLAY_EVENT_TYPES = frozenset(
+    {
+        EventType.EVALUATION_DRIFT_BASELINE_REGISTERED,
+        EventType.EVALUATION_DRIFT_OBSERVATION_REGISTERED,
+    }
+)
+
+EVALUATION_INTELLIGENCE_OVERVIEW_REPLAY_EVENT_TYPES = frozenset(
+    {
+        *EVALUATION_REGISTRY_REPLAY_EVENT_TYPES,
+        *EVALUATION_LINEAGE_REPLAY_EVENT_TYPES,
+        *EVALUATION_COVERAGE_REPLAY_EVENT_TYPES,
+        *EVALUATION_DRIFT_REPLAY_EVENT_TYPES,
+    }
+)
+
 
 @dataclass(frozen=True)
 class ProjectionReplaySnapshot:
@@ -159,6 +196,23 @@ class ProjectionReplayService:
                 ),
                 "decision_projection": EventTypeProjectionReplayAdapter(
                     DECISION_REPLAY_EVENT_TYPES
+                ),
+                "evaluation_coverage": EventTypeProjectionReplayAdapter(
+                    EVALUATION_COVERAGE_REPLAY_EVENT_TYPES
+                ),
+                "evaluation_drift": EventTypeProjectionReplayAdapter(
+                    EVALUATION_DRIFT_REPLAY_EVENT_TYPES
+                ),
+                "evaluation_intelligence_overview": (
+                    EventTypeProjectionReplayAdapter(
+                        EVALUATION_INTELLIGENCE_OVERVIEW_REPLAY_EVENT_TYPES
+                    )
+                ),
+                "evaluation_lineage": EventTypeProjectionReplayAdapter(
+                    EVALUATION_LINEAGE_REPLAY_EVENT_TYPES
+                ),
+                "evaluation_registry": EventTypeProjectionReplayAdapter(
+                    EVALUATION_REGISTRY_REPLAY_EVENT_TYPES
                 ),
                 "session_decision_projection": (
                     EventTypeProjectionReplayAdapter(

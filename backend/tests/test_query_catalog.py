@@ -13,7 +13,12 @@ EXPECTED_PROJECTION_TYPES = [
     "decision_effectiveness",
     "decision_lineage_projection",
     "decision_projection",
+    "evaluation_coverage",
+    "evaluation_drift",
+    "evaluation_intelligence_overview",
+    "evaluation_lineage",
     "evaluation_outcome_rollup",
+    "evaluation_registry",
     "evaluation_summary",
     "evaluation_trend",
     "explainability",
@@ -68,6 +73,26 @@ def test_query_catalog_route_metadata_is_present() -> None:
         "evaluation_type",
         "outcome",
     ]
+    assert entries["evaluation_coverage"].route == (
+        "/evaluation-coverage/projection"
+    )
+    assert entries["evaluation_coverage"].filters == []
+    assert entries["evaluation_drift"].route == (
+        "/evaluation-drift/projection"
+    )
+    assert entries["evaluation_drift"].filters == []
+    assert entries["evaluation_intelligence_overview"].route == (
+        "/evaluation-intelligence-overview/projection"
+    )
+    assert entries["evaluation_intelligence_overview"].filters == []
+    assert entries["evaluation_lineage"].route == (
+        "/evaluation-lineage/projection"
+    )
+    assert entries["evaluation_lineage"].filters == []
+    assert entries["evaluation_registry"].route == (
+        "/evaluation-registry/projection"
+    )
+    assert entries["evaluation_registry"].filters == []
     assert entries["evaluation_trend"].route == "/runtime/evaluation-trend"
     assert entries["evaluation_trend"].filters == [
         "granularity",
@@ -183,6 +208,26 @@ def test_projection_registry_exposes_query_catalog_metadata() -> None:
     ]
     assert entries["evaluation_trend"].route == "/runtime/evaluation-trend"
     assert entries["evaluation_trend"].supported_filters == ["granularity"]
+    assert entries["evaluation_coverage"].route == (
+        "/evaluation-coverage/projection"
+    )
+    assert entries["evaluation_coverage"].supported_filters == []
+    assert entries["evaluation_drift"].route == (
+        "/evaluation-drift/projection"
+    )
+    assert entries["evaluation_drift"].supported_filters == []
+    assert entries["evaluation_intelligence_overview"].route == (
+        "/evaluation-intelligence-overview/projection"
+    )
+    assert entries["evaluation_intelligence_overview"].supported_filters == []
+    assert entries["evaluation_lineage"].route == (
+        "/evaluation-lineage/projection"
+    )
+    assert entries["evaluation_lineage"].supported_filters == []
+    assert entries["evaluation_registry"].route == (
+        "/evaluation-registry/projection"
+    )
+    assert entries["evaluation_registry"].supported_filters == []
     assert entries["policy_evaluation_overview"].route == (
         "/runtime/policy-evaluation-overview"
     )

@@ -19,6 +19,33 @@ class RecordingEvaluationService:
         return {"surface": "evaluation_summary", "filters": filters}
 
 
+class RecordingCoverageService:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def build(self):
+        self.calls += 1
+        return {"surface": "evaluation_coverage"}
+
+
+class RecordingDriftService:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def build(self):
+        self.calls += 1
+        return {"surface": "evaluation_drift"}
+
+
+class RecordingIntelligenceOverviewService:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def build(self):
+        self.calls += 1
+        return {"surface": "evaluation_intelligence_overview"}
+
+
 class RecordingDecisionEffectivenessService:
     def __init__(self) -> None:
         self.calls = 0
@@ -85,6 +112,9 @@ class RecordingPolicyEvaluationOverviewService:
 def service_with_recorders():
     decision_effectiveness = RecordingDecisionEffectivenessService()
     evaluation = RecordingEvaluationService()
+    coverage = RecordingCoverageService()
+    drift = RecordingDriftService()
+    intelligence_overview = RecordingIntelligenceOverviewService()
     outcome = RecordingOutcomeService()
     trend = RecordingTrendService()
     governance_health = RecordingGovernanceHealthRollupService()
@@ -94,6 +124,9 @@ def service_with_recorders():
     service = QueryExecutorService(
         catalog_service=QueryCatalogService(),
         evaluation_service=evaluation,
+        evaluation_coverage_service=coverage,
+        evaluation_drift_service=drift,
+        evaluation_intelligence_overview_service=intelligence_overview,
         evaluation_outcome_service=outcome,
         evaluation_trend_service=trend,
         policy_service=policy,
@@ -106,6 +139,9 @@ def service_with_recorders():
         service,
         decision_effectiveness,
         evaluation,
+        coverage,
+        drift,
+        intelligence_overview,
         outcome,
         trend,
         governance_health,
@@ -180,7 +216,7 @@ def test_catalog_valid_but_unsupported_query_is_rejected() -> None:
 
 
 def test_filters_forwarded_correctly() -> None:
-    service, _, _, _, trend, *_ = service_with_recorders()
+    service, _, _, _, _, _, _, trend, *_ = service_with_recorders()
 
     service.execute(
         QueryExecutionRequest(
@@ -203,6 +239,9 @@ def test_supported_projections_execute_correctly() -> None:
         service,
         decision_effectiveness,
         _,
+        coverage,
+        drift,
+        intelligence_overview,
         outcome,
         trend,
         governance_health,
@@ -216,6 +255,15 @@ def test_supported_projections_execute_correctly() -> None:
     assert service.execute(
         QueryExecutionRequest(query_id="decision_effectiveness")
     ).result == {"surface": "decision_effectiveness"}
+    assert service.execute(
+        QueryExecutionRequest(query_id="evaluation_coverage")
+    ).result == {"surface": "evaluation_coverage"}
+    assert service.execute(
+        QueryExecutionRequest(query_id="evaluation_drift")
+    ).result == {"surface": "evaluation_drift"}
+    assert service.execute(
+        QueryExecutionRequest(query_id="evaluation_intelligence_overview")
+    ).result == {"surface": "evaluation_intelligence_overview"}
     assert service.execute(
         QueryExecutionRequest(query_id="evaluation_outcome_rollup")
     ).result == {
@@ -247,6 +295,9 @@ def test_supported_projections_execute_correctly() -> None:
     ).result == {"surface": "policy_evaluation_overview"}
 
     assert decision_effectiveness.calls == 1
+    assert coverage.calls == 1
+    assert drift.calls == 1
+    assert intelligence_overview.calls == 1
     assert len(outcome.calls) == 1
     assert len(trend.calls) == 1
     assert governance_health.calls == 1

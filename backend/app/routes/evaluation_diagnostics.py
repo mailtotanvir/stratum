@@ -10,5 +10,11 @@ router = APIRouter()
 
 
 @router.get("/runtime/evaluation-diagnostics")
+@router.get("/evaluation-diagnostics")
 def get_evaluation_diagnostics() -> EvaluationDiagnostics:
     return evaluation_diagnostics_service.generate()
+
+
+@router.get("/evaluation-diagnostics/projection")
+def get_evaluation_diagnostics_projection():
+    return evaluation_diagnostics_service.projection()

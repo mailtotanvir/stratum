@@ -10,5 +10,6 @@ router = APIRouter()
 
 
 @router.get("/runtime/query-executor-diagnostics")
+@router.get("/runtime/query-executor/diagnostics")
 def get_runtime_query_executor_diagnostics() -> QueryExecutorDiagnostics:
     return query_executor_diagnostics_service.get_diagnostics()

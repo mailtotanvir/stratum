@@ -19,11 +19,26 @@ from app.services.decision_effectiveness_projection_builder_service import (
 from app.services.evaluation_summary_projection_builder_service import (
     evaluation_summary_projection_builder_service,
 )
+from app.services.evaluation_coverage_projection_builder_service import (
+    evaluation_coverage_projection_builder_service,
+)
+from app.services.evaluation_drift_projection_builder_service import (
+    evaluation_drift_projection_builder_service,
+)
+from app.services.evaluation_intelligence_overview_projection_builder_service import (
+    evaluation_intelligence_overview_projection_builder_service,
+)
 from app.services.evaluation_trend_projection_v2_builder_service import (
     evaluation_trend_projection_builder_service,
 )
 from app.services.evaluation_outcome_rollup_projection_builder_service import (
     evaluation_outcome_rollup_projection_builder_service,
+)
+from app.services.evaluation_lineage_projection_builder_service import (
+    evaluation_lineage_projection_builder_service,
+)
+from app.services.evaluation_registry_projection_builder_service import (
+    evaluation_registry_projection_builder_service,
 )
 from app.services.governance_health_rollup_projection_builder_service import (
     governance_health_rollup_projection_builder_service,
@@ -98,7 +113,14 @@ projection_registry.register(artifact_lineage_projection_builder)
 projection_registry.register(decision_effectiveness_projection_builder_service)
 projection_registry.register(decision_lineage_projection_builder)
 projection_registry.register(decision_projection_builder_service)
+projection_registry.register(evaluation_coverage_projection_builder_service)
+projection_registry.register(evaluation_drift_projection_builder_service)
+projection_registry.register(
+    evaluation_intelligence_overview_projection_builder_service
+)
 projection_registry.register(evaluation_outcome_rollup_projection_builder_service)
+projection_registry.register(evaluation_lineage_projection_builder_service)
+projection_registry.register(evaluation_registry_projection_builder_service)
 projection_registry.register(evaluation_summary_projection_builder_service)
 projection_registry.register(evaluation_trend_projection_builder_service)
 projection_registry.register(governance_audit_projection_builder)

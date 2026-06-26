@@ -842,6 +842,19 @@ def test_diagnostics_summary_empty(tmp_path) -> None:
                 "status": "within_budget",
             },
         },
+        "evaluations": {
+            "projection_count": 8,
+            "healthy_projections": 8,
+            "unhealthy_projections": 0,
+            "dependency_failures": 0,
+            "overall_health": "healthy",
+        },
+        "evaluation_reconstruction": {
+            "projections_rebuildable": 5,
+            "successful_reconstructions": 0,
+            "failed_reconstructions": 0,
+            "replay_validation_status": "not_verified",
+        },
     }
 
 
@@ -949,6 +962,8 @@ def test_diagnostics_summary_includes_existing_top_level_fields(tmp_path) -> Non
         "planner_recommendations",
         "integrity",
         "governance",
+        "evaluations",
+        "evaluation_reconstruction",
     }
 
 

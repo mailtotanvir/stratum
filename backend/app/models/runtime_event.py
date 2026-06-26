@@ -59,6 +59,24 @@ class EventType(StrEnum):
     DECISION_EVIDENCE_CREATED = "decision_evidence_created"
     EVALUATION_CREATED = "evaluation_created"
     EVALUATION_RESULT_ADDED = "evaluation_result_added"
+    EVALUATION_DEFINITION_REGISTERED = "evaluation_definition_registered"
+    EVALUATION_SUITE_REGISTERED = "evaluation_suite_registered"
+    EVALUATION_LINEAGE_RECORDED = "evaluation_lineage_recorded"
+    EVALUATION_LINEAGE_EVIDENCE_RECORDED = (
+        "evaluation_lineage_evidence_recorded"
+    )
+    EVALUATION_COVERAGE_TARGET_REGISTERED = (
+        "evaluation_coverage_target_registered"
+    )
+    EVALUATION_COVERAGE_MAPPING_REGISTERED = (
+        "evaluation_coverage_mapping_registered"
+    )
+    EVALUATION_DRIFT_BASELINE_REGISTERED = (
+        "evaluation_drift_baseline_registered"
+    )
+    EVALUATION_DRIFT_OBSERVATION_REGISTERED = (
+        "evaluation_drift_observation_registered"
+    )
     POLICY_CREATED = "policy_created"
     POLICY_VERSION_ADDED = "policy_version_added"
     POLICY_DECISION_RECORDED = "policy_decision_recorded"
