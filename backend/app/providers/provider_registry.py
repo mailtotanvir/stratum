@@ -1,5 +1,10 @@
 from app.providers.base_provider import BaseProvider
 from app.providers.mock_provider import MockProvider
+from app.providers.openai_compatible_provider import (
+    OPENAI_COMPATIBLE_BASE_URL,
+    OPENAI_COMPATIBLE_PROVIDER_NAME,
+    OpenAICompatibleProvider,
+)
 
 
 class ProviderRegistry:
@@ -41,4 +46,13 @@ class ProviderRegistry:
         return sorted(self.provider(provider).supported_models())
 
 
-provider_registry = ProviderRegistry([MockProvider()])
+provider_registry = ProviderRegistry(
+    [
+        MockProvider(),
+        OpenAICompatibleProvider(
+            provider_name=OPENAI_COMPATIBLE_PROVIDER_NAME,
+            base_url=OPENAI_COMPATIBLE_BASE_URL,
+            api_key="",
+        ),
+    ]
+)
