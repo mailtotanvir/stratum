@@ -52,6 +52,10 @@ class ProviderExecutionRequest(BaseModel):
     correlation_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @property
+    def provider_id(self) -> str:
+        return self.provider
+
     @field_validator("provider", "model")
     @classmethod
     def require_non_empty_text(cls, value: str) -> str:
@@ -115,6 +119,16 @@ class ProviderExecutionResult(BaseModel):
         ):
             raise ValueError("failed provider results require error_message")
         return self
+
+
+class ProviderExecutionStreamEvent(BaseModel):
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    event_type: str = Field(min_length=1)
+    sequence: int = Field(ge=0)
+    content: str | None = None
+    done: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProviderExecutionRecord(BaseModel):

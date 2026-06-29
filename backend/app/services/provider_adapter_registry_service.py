@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 from app.providers.base import ProviderAdapter
 from app.providers.fake import FakeProviderAdapter
+from app.providers.openai_compatible import OpenAICompatibleProviderAdapter
 
 
 class ProviderAdapterRegistryService:
@@ -10,7 +11,14 @@ class ProviderAdapterRegistryService:
         adapters: Iterable[ProviderAdapter] | None = None,
     ) -> None:
         self._adapters: dict[str, ProviderAdapter] = {}
-        source = [FakeProviderAdapter()] if adapters is None else adapters
+        source = (
+            [
+                FakeProviderAdapter(),
+                OpenAICompatibleProviderAdapter(),
+            ]
+            if adapters is None
+            else adapters
+        )
         for adapter in source:
             self._register(adapter)
 

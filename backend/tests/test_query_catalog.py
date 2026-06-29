@@ -31,6 +31,7 @@ EXPECTED_PROJECTION_TYPES = [
     "recommendation_outcome",
     "runtime_intelligence",
     "runtime_reconstruction_view",
+    "session_agent_execution_projection",
     "session_decision_projection",
 ]
 

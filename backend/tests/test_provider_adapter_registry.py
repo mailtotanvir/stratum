@@ -9,7 +9,7 @@ from app.services.provider_adapter_registry_service import (
 def test_registry_includes_fake_adapter() -> None:
     adapters = ProviderAdapterRegistryService().list_adapters()
 
-    assert [adapter.provider_id for adapter in adapters] == ["fake"]
+    assert [adapter.provider_id for adapter in adapters] == ["fake", "openai-compatible"]
 
 
 def test_list_adapters_is_deterministic() -> None:
@@ -18,8 +18,8 @@ def test_list_adapters_is_deterministic() -> None:
     first = registry.list_adapters()
     second = registry.list_adapters()
 
-    assert [adapter.provider_id for adapter in first] == ["fake"]
-    assert [adapter.provider_id for adapter in second] == ["fake"]
+    assert [adapter.provider_id for adapter in first] == ["fake", "openai-compatible"]
+    assert [adapter.provider_id for adapter in second] == ["fake", "openai-compatible"]
     assert first[0] is second[0]
 
 
@@ -57,13 +57,12 @@ def test_duplicate_provider_id_registration_is_rejected() -> None:
         )
 
 
-def test_registry_does_not_include_real_providers() -> None:
+def test_registry_includes_only_deterministic_builtin_providers() -> None:
     provider_ids = [
         adapter.provider_id
         for adapter in ProviderAdapterRegistryService().list_adapters()
     ]
 
-    assert provider_ids == ["fake"]
+    assert provider_ids == ["fake", "openai-compatible"]
     assert "openai" not in provider_ids
     assert "anthropic" not in provider_ids
-    assert "openai-compatible" not in provider_ids

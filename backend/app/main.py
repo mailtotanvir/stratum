@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 
+from app.routes.agent_execution import router as agent_execution_router
+from app.routes.agent_execution_diagnostics import (
+    router as agent_execution_diagnostics_router,
+)
 from app.routes.artifact import router as artifact_router
 from app.routes.artifact_lineage import router as artifact_lineage_router
 from app.routes.diagnostics import router as diagnostics_router
@@ -56,6 +60,9 @@ from app.routes.policy_evaluation_overview_projection import (
 from app.routes.policy_projections import router as policy_projections_router
 from app.routes.planner import router as planner_router
 from app.routes.proposal import router as proposal_router
+from app.routes.provider_execution_diagnostics import (
+    router as provider_execution_diagnostics_router,
+)
 from app.routes.provider_observability import (
     router as provider_observability_router,
 )
@@ -79,6 +86,9 @@ from app.routes.runtime_intelligence import (
 from app.routes.runtime_reconstruction import (
     router as runtime_reconstruction_router,
 )
+from app.routes.session_agent_execution_projection import (
+    router as session_agent_execution_projection_router,
+)
 from app.routes.stream import router as stream_router
 from app.routes.stop import router as stop_router
 from app.routes.task import router as task_router
@@ -86,6 +96,8 @@ from app.routes.tool import router as tool_router
 from app.routes.tool_invocation import router as tool_invocation_router
 
 app = FastAPI(title="Stratum Backend")
+app.include_router(agent_execution_router)
+app.include_router(agent_execution_diagnostics_router)
 app.include_router(artifact_router)
 app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
@@ -118,6 +130,7 @@ app.include_router(policy_evaluation_overview_projection_router)
 app.include_router(policy_projections_router)
 app.include_router(planner_router)
 app.include_router(proposal_router)
+app.include_router(provider_execution_diagnostics_router)
 app.include_router(provider_observability_router)
 app.include_router(query_router)
 app.include_router(query_catalog_router)
@@ -130,6 +143,7 @@ app.include_router(reflection_router)
 app.include_router(runtime_router)
 app.include_router(runtime_intelligence_router)
 app.include_router(runtime_reconstruction_router)
+app.include_router(session_agent_execution_projection_router)
 app.include_router(stream_router)
 app.include_router(stop_router)
 app.include_router(task_router)

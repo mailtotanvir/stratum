@@ -182,6 +182,26 @@ class EventType(StrEnum):
     PROVIDER_OBSERVABILITY_GENERATED = "provider_observability_generated"
     PROVIDER_OBSERVABILITY_FAILED = "provider_observability_failed"
     PROVIDER_COST_ESTIMATE_GENERATED = "provider_cost_estimate_generated"
+    PROVIDER_EXECUTION_REQUESTED = "provider_execution_requested"
+    PROVIDER_EXECUTION_VALIDATION_FAILED = (
+        "provider_execution_validation_failed"
+    )
+    PROVIDER_EXECUTION_STARTED = "provider_execution_started"
+    PROVIDER_EXECUTION_COMPLETED = "provider_execution_completed"
+    PROVIDER_EXECUTION_FAILED = "provider_execution_failed"
+    PROVIDER_EXECUTION_CANCELLED = "provider_execution_cancelled"
+    PROVIDER_EXECUTION_STREAM_STARTED = (
+        "provider_execution_stream_started"
+    )
+    PROVIDER_EXECUTION_STREAM_DELTA = "provider_execution_stream_delta"
+    PROVIDER_EXECUTION_STREAM_COMPLETED = (
+        "provider_execution_stream_completed"
+    )
+    PROVIDER_EXECUTION_STREAM_FAILED = "provider_execution_stream_failed"
+    AGENT_EXECUTION_REQUESTED = "agent_execution_requested"
+    AGENT_EXECUTION_STARTED = "agent_execution_started"
+    AGENT_EXECUTION_COMPLETED = "agent_execution_completed"
+    AGENT_EXECUTION_FAILED = "agent_execution_failed"
     WORK_LOOP_STARTED = "work_loop_started"
     WORK_LOOP_COMPLETED = "work_loop_completed"
     WORK_LOOP_FAILED = "work_loop_failed"

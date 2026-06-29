@@ -142,6 +142,13 @@ PROJECTION_QUERY_METADATA: dict[str, dict[str, Any]] = {
         "route": "/runtime/reconstruction/sessions",
         "supported_filters": ["session_id"],
     },
+    "session_agent_execution_projection": {
+        "category": "executions",
+        "route": (
+            "/runtime/sessions/{runtime_session_id}/agent-executions"
+        ),
+        "supported_filters": ["runtime_session_id"],
+    },
     "session_decision_projection": {
         "category": "decisions",
         "route": "/runtime/projections/session_decision_projection",
@@ -642,6 +649,21 @@ def default_projection_contracts() -> list[ProjectionContract]:
             projection_category="reconstruction",
             supports_replay=False,
             supports_drift_detection=False,
+            supports_reconstruction=True,
+            supports_analytics=True,
+            supports_explainability=True,
+        ),
+        ProjectionContract(
+            projection_name="session_agent_execution_projection",
+            projection_version=1,
+            projection_description=(
+                "Reconstructs agent and provider execution timelines "
+                "for runtime sessions."
+            ),
+            projection_owner="runtime",
+            projection_category="execution",
+            supports_replay=True,
+            supports_drift_detection=True,
             supports_reconstruction=True,
             supports_analytics=True,
             supports_explainability=True,

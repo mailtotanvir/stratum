@@ -125,7 +125,7 @@ def test_query_executor_diagnostics_route_works() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["supported_query_count"] == 12
-    assert body["catalog_query_count"] == 23
+    assert body["catalog_query_count"] == 24
     assert "generated_at" in body
 
 
@@ -219,6 +219,7 @@ def test_unsupported_catalog_query_ids_are_reported() -> None:
         "runtime.operational_analytics",
         "runtime.runtime_intelligence",
         "runtime.runtime_reconstruction_view",
+        "runtime.session_agent_execution_projection",
         "runtime.session_decision_projection",
     ]
 

@@ -104,6 +104,11 @@ from app.services.recommendation_outcome_projection_builder_service import (
     RECOMMENDATION_OUTCOME_SCHEMA_VERSION,
     recommendation_outcome_projection_builder_service,
 )
+from app.services.session_agent_execution_projection_builder_service import (
+    SESSION_AGENT_EXECUTION_PROJECTION_SCHEMA_VERSION,
+    SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
+    session_agent_execution_projection_builder_service,
+)
 from app.services.session_decision_projection_builder_service import (
     SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
     SESSION_DECISION_PROJECTION_TYPE,
@@ -293,6 +298,7 @@ def test_runtime_registry_contains_existing_builders() -> None:
         POLICY_EVIDENCE_PROJECTION_TYPE,
         POLICY_SUMMARY_PROJECTION_TYPE,
         RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+        SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
         SESSION_DECISION_PROJECTION_TYPE,
     ]
     assert (
@@ -368,6 +374,10 @@ def test_runtime_registry_contains_existing_builders() -> None:
     assert (
         projection_registry.get(RECOMMENDATION_OUTCOME_PROJECTION_TYPE)
         is recommendation_outcome_projection_builder_service
+    )
+    assert (
+        projection_registry.get(SESSION_AGENT_EXECUTION_PROJECTION_TYPE)
+        is session_agent_execution_projection_builder_service
     )
     assert (
         projection_registry.get(SESSION_DECISION_PROJECTION_TYPE)
@@ -618,6 +628,7 @@ def test_runtime_registry_exposes_stable_schema_contracts() -> None:
                 ),
             },
         },
+        session_agent_execution_projection_builder_service.schema_info.model_dump(),
         {
             "projection_type": SESSION_DECISION_PROJECTION_TYPE,
             "schema_version": SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
@@ -671,6 +682,7 @@ def test_runtime_projection_endpoint_lists_types_without_building(
             POLICY_EVIDENCE_PROJECTION_TYPE,
             POLICY_SUMMARY_PROJECTION_TYPE,
             RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+            SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
@@ -920,6 +932,7 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                     ),
                 },
             },
+            session_agent_execution_projection_builder_service.schema_info.model_dump(),
             {
                 "projection_type": SESSION_DECISION_PROJECTION_TYPE,
                 "schema_version": SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
@@ -1082,6 +1095,16 @@ def test_runtime_projection_endpoint_lists_types_without_building(
                 "latest_rebuild_duration_ms": None,
             },
             {
+                "projection_name": SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
+                "projection_version": (
+                    SESSION_AGENT_EXECUTION_PROJECTION_SCHEMA_VERSION
+                ),
+                "latest_rebuild_status": None,
+                "latest_rebuild_started_at": None,
+                "latest_rebuild_completed_at": None,
+                "latest_rebuild_duration_ms": None,
+            },
+            {
                 "projection_name": SESSION_DECISION_PROJECTION_TYPE,
                 "projection_version": (
                     SESSION_DECISION_PROJECTION_SCHEMA_VERSION
@@ -1098,7 +1121,7 @@ def test_runtime_projection_endpoint_lists_types_without_building(
     )
     assert len(events) == 1
     assert events[0].metadata == {
-        "projection_type_count": 19,
+        "projection_type_count": 20,
         "projection_types": [
             ARTIFACT_LINEAGE_PROJECTION_TYPE,
             DECISION_EFFECTIVENESS_PROJECTION_TYPE,
@@ -1118,6 +1141,7 @@ def test_runtime_projection_endpoint_lists_types_without_building(
             POLICY_EVIDENCE_PROJECTION_TYPE,
             POLICY_SUMMARY_PROJECTION_TYPE,
             RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+            SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "source": "projection_registry",
@@ -1149,6 +1173,7 @@ def test_runtime_projection_endpoint_does_not_expose_payloads() -> None:
         "schema_version",
         "builder_name",
         "reconstruction_source",
+        "authoritative_source",
     ),
     [
         (
@@ -1156,12 +1181,21 @@ def test_runtime_projection_endpoint_does_not_expose_payloads() -> None:
             DECISION_PROJECTION_SCHEMA_VERSION,
             "DecisionProjectionBuilderService",
             "runtime_session_state",
+            "runtime_session",
+        ),
+        (
+            SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
+            SESSION_AGENT_EXECUTION_PROJECTION_SCHEMA_VERSION,
+            "SessionAgentExecutionProjectionBuilderService",
+            "runtime_event_store",
+            "runtime_event_store",
         ),
         (
             SESSION_DECISION_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_SCHEMA_VERSION,
             "SessionDecisionProjectionBuilderService",
             "decision_projection",
+            "runtime_session",
         ),
     ],
 )
@@ -1170,6 +1204,7 @@ def test_runtime_projection_type_detail_returns_discovery_metadata(
     schema_version: int,
     builder_name: str,
     reconstruction_source: str,
+    authoritative_source: str,
 ) -> None:
     response = TestClient(app).get(
         f"/runtime/projections/{projection_type}"
@@ -1185,7 +1220,7 @@ def test_runtime_projection_type_detail_returns_discovery_metadata(
             "projection_type": projection_type,
             "reconstruction_source": reconstruction_source,
             "rebuildable": True,
-            "authoritative_source": "runtime_session",
+            "authoritative_source": authoritative_source,
         },
         "source": "projection_registry",
     }
@@ -1264,6 +1299,7 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
             POLICY_EVIDENCE_PROJECTION_TYPE,
             POLICY_SUMMARY_PROJECTION_TYPE,
             RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+            SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
             SESSION_DECISION_PROJECTION_TYPE,
         ],
         "schemas": [
@@ -1285,6 +1321,7 @@ def test_runtime_projection_list_retains_existing_discovery_fields() -> None:
             policy_evidence_projection_builder_service.schema_info.model_dump(),
             policy_projection_builder_service.schema_info.model_dump(),
             recommendation_outcome_projection_builder_service.schema_info.model_dump(),
+            session_agent_execution_projection_builder_service.schema_info.model_dump(),
             session_decision_projection_builder_service.schema_info.model_dump(),
         ],
     }

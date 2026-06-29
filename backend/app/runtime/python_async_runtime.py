@@ -1,7 +1,23 @@
+from collections.abc import AsyncIterator
+
+from app.models.provider_execution import (
+    ProviderExecutionRequest,
+    ProviderExecutionResult,
+    ProviderExecutionStreamEvent,
+)
 from app.models.runtime_event import EventType, Severity
+from app.providers.base import ProviderAdapterError
 from app.services.event_service import EventService, event_service
 from app.services.governance_service import GovernanceService
 from app.services.interrupt_service import InterruptService, interrupt_service
+from app.services.provider_execution_service import (
+    ProviderExecutionService,
+    provider_execution_service,
+)
+from app.services.provider_execution_event_factory import (
+    ProviderExecutionEventFactory,
+    provider_execution_event_factory,
+)
 from app.services.reflection_service import ReflectionService, reflection_service
 from app.services.runtime_execution_service import (
     RuntimeExecutionService,
@@ -24,6 +40,8 @@ class PythonAsyncRuntime:
         interrupts: InterruptService | None = None,
         stops: StopService | None = None,
         sessions: RuntimeSessionService | None = None,
+        provider_execution: ProviderExecutionService | None = None,
+        provider_events: ProviderExecutionEventFactory | None = None,
     ) -> None:
         self._events = events or event_service
         self._executions = executions or runtime_execution_service
@@ -32,6 +50,113 @@ class PythonAsyncRuntime:
         self._interrupts = interrupts or interrupt_service
         self._stops = stops or stop_service
         self._sessions = sessions or runtime_session_service
+        self._provider_execution = (
+            provider_execution or provider_execution_service
+        )
+        self._provider_events = (
+            provider_events or provider_execution_event_factory
+        )
+
+    async def _execute_provider_request(
+        self,
+        request: ProviderExecutionRequest,
+    ) -> ProviderExecutionResult:
+        execution_id = self._provider_events.execution_id(request)
+        requested = self._provider_events.create_requested(
+            request,
+            execution_id,
+        )
+        await self._events.emit_event(
+            event_type=EventType.PROVIDER_EXECUTION_REQUESTED,
+            message="Provider execution requested",
+            metadata=requested.model_dump(mode="json"),
+        )
+        try:
+            result = await self._provider_execution.complete(request)
+        except (ProviderAdapterError, ValueError) as exc:
+            failed = self._provider_events.create_failed(
+                request,
+                exc,
+                execution_id,
+            )
+            await self._events.emit_event(
+                event_type=EventType.PROVIDER_EXECUTION_FAILED,
+                message="Provider execution failed",
+                severity=Severity.ERROR,
+                metadata=failed.model_dump(mode="json"),
+            )
+            raise
+
+        completed = self._provider_events.create_completed(
+            request,
+            result,
+            execution_id,
+        )
+        await self._events.emit_event(
+            event_type=EventType.PROVIDER_EXECUTION_COMPLETED,
+            message="Provider execution completed",
+            metadata=completed.model_dump(mode="json"),
+        )
+        return result
+
+    async def _stream_provider_request(
+        self,
+        request: ProviderExecutionRequest,
+    ) -> AsyncIterator[ProviderExecutionStreamEvent]:
+        execution_id = self._provider_events.execution_id(request)
+        started = self._provider_events.create_stream_started(
+            request,
+            execution_id,
+        )
+        await self._events.emit_event(
+            event_type=EventType.PROVIDER_EXECUTION_STREAM_STARTED,
+            message="Provider execution stream started",
+            metadata=started.model_dump(mode="json"),
+        )
+
+        next_sequence = 1
+        try:
+            async for event in self._provider_execution.stream(request):
+                next_sequence = max(next_sequence, event.sequence + 1)
+                if event.event_type == "delta":
+                    delta = self._provider_events.create_stream_delta(
+                        request,
+                        event,
+                        execution_id,
+                    )
+                    await self._events.emit_event(
+                        event_type=(
+                            EventType.PROVIDER_EXECUTION_STREAM_DELTA
+                        ),
+                        message="Provider execution stream delta",
+                        metadata=delta.model_dump(mode="json"),
+                    )
+                yield event
+        except ProviderAdapterError as exc:
+            failed = self._provider_events.create_stream_failed(
+                request,
+                exc,
+                execution_id,
+                next_sequence,
+            )
+            await self._events.emit_event(
+                event_type=EventType.PROVIDER_EXECUTION_STREAM_FAILED,
+                message="Provider execution stream failed",
+                severity=Severity.ERROR,
+                metadata=failed.model_dump(mode="json"),
+            )
+            raise
+
+        completed = self._provider_events.create_stream_completed(
+            request,
+            execution_id,
+            next_sequence,
+        )
+        await self._events.emit_event(
+            event_type=EventType.PROVIDER_EXECUTION_STREAM_COMPLETED,
+            message="Provider execution stream completed",
+            metadata=completed.model_dump(mode="json"),
+        )
 
     async def run_task(self, task_id: str) -> dict:
         governance = self._governance_preview()

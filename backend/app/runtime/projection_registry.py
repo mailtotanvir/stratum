@@ -58,6 +58,9 @@ from app.services.policy_projection_builder_service import (
 from app.services.recommendation_outcome_projection_builder_service import (
     recommendation_outcome_projection_builder_service,
 )
+from app.services.session_agent_execution_projection_builder_service import (
+    session_agent_execution_projection_builder_service,
+)
 from app.services.session_decision_projection_builder_service import (
     session_decision_projection_builder_service,
 )
@@ -129,4 +132,7 @@ projection_registry.register(policy_evidence_projection_builder_service)
 projection_registry.register(policy_evaluation_overview_projection_builder_service)
 projection_registry.register(policy_projection_builder_service)
 projection_registry.register(recommendation_outcome_projection_builder_service)
+projection_registry.register(
+    session_agent_execution_projection_builder_service
+)
 projection_registry.register(session_decision_projection_builder_service)

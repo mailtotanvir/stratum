@@ -31,6 +31,7 @@ EXPECTED_PROJECTION_TYPES = [
     "recommendation_outcome",
     "runtime_intelligence",
     "runtime_reconstruction_view",
+    "session_agent_execution_projection",
     "session_decision_projection",
 ]
 
@@ -49,7 +50,7 @@ def test_query_manifest_route_works() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["schema_version"] == "1.0"
-    assert body["query_count"] == 23
+    assert body["query_count"] == 24
     assert body["health_status"] == "healthy"
     assert "generated_at" in body
 

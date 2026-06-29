@@ -12,6 +12,10 @@ class ProviderAdapterError(RuntimeError):
     pass
 
 
+class ProviderExecutionCancelledError(ProviderAdapterError):
+    pass
+
+
 class ProviderAdapter(ABC):
     @abstractmethod
     async def complete(
@@ -33,3 +37,8 @@ class ProviderAdapter(ABC):
                 sequence=0,
             )
         raise NotImplementedError
+
+    async def cancel(self, execution_id: str) -> None:
+        raise ProviderAdapterError(
+            f"Provider adapter does not support cancellation: {execution_id}"
+        )

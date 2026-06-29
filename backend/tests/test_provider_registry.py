@@ -5,7 +5,10 @@ from app.providers.provider_registry import ProviderRegistry, provider_registry
 
 
 def test_default_registry_contains_mock_provider() -> None:
-    assert provider_registry.providers() == ["mock"]
+    assert provider_registry.providers() == [
+        "mock",
+        "openai-compatible",
+    ]
 
 
 def test_duplicate_registration_rejected() -> None:
@@ -49,4 +52,7 @@ def test_providers_list_deterministic() -> None:
     first = provider_registry.providers()
     second = provider_registry.providers()
 
-    assert first == second == ["mock"]
+    assert first == second == [
+        "mock",
+        "openai-compatible",
+    ]

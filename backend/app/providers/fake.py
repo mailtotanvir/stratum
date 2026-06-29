@@ -75,6 +75,9 @@ class FakeProviderAdapter(ProviderAdapter):
             done=True,
         )
 
+    async def cancel(self, execution_id: str) -> None:
+        del execution_id
+
 
 def _raise_if_simulated_error(
     request: ProviderExecutionRequest,
