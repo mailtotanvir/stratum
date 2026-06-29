@@ -51,3 +51,23 @@ def test_provider_execution_service_default_skips_disabled_live_provider(
 
     assert service._adapter_registry.has_adapter("fake") is True
     assert service._adapter_registry.has_adapter("openrouter") is False
+
+
+class RecordingEvents:
+    pass
+
+
+def test_provider_execution_service_default_accepts_event_service(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("STRATUM_PROVIDER_ID", raising=False)
+    monkeypatch.delenv("STRATUM_PROVIDER_DISPLAY_NAME", raising=False)
+    monkeypatch.delenv("STRATUM_PROVIDER_BASE_URL", raising=False)
+    monkeypatch.delenv("STRATUM_PROVIDER_API_KEY", raising=False)
+    monkeypatch.delenv("STRATUM_PROVIDER_MODEL", raising=False)
+    monkeypatch.delenv("STRATUM_PROVIDER_ENABLED", raising=False)
+
+    events = RecordingEvents()
+    service = provider_execution_service_default(events=events)
+
+    assert service._events is events

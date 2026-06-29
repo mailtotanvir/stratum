@@ -78,3 +78,19 @@ def test_factory_does_not_register_disabled_environment_provider() -> None:
 
     assert service._adapter_registry.has_adapter("env-live") is False
     assert service._adapter_registry.has_adapter("fake") is True
+
+
+class RecordingEvents:
+    pass
+
+
+def test_factory_passes_event_service_to_provider_execution_service() -> None:
+    events = RecordingEvents()
+
+    service = LiveProviderExecutionServiceFactory().create_from_environment(
+        configuration_service=ProviderConfigurationService([]),
+        loader=ProviderConfigurationLoaderService({}),
+        events=events,
+    )
+
+    assert service._events is events

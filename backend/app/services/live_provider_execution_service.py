@@ -1,3 +1,4 @@
+from app.services.event_service import EventService
 from app.services.live_provider_adapter_registry_service import (
     LiveProviderAdapterRegistryService,
 )
@@ -7,7 +8,6 @@ from app.services.provider_configuration_loader_service import (
 from app.services.provider_configuration_service import (
     ProviderConfigurationService,
 )
-from app.services.provider_execution_service import ProviderExecutionService
 
 
 class LiveProviderExecutionServiceFactory:
@@ -22,7 +22,12 @@ class LiveProviderExecutionServiceFactory:
         *,
         configuration_service: ProviderConfigurationService | None = None,
         loader: ProviderConfigurationLoaderService | None = None,
-    ) -> ProviderExecutionService:
+        events: EventService | None = None,
+    ):
+        from app.services.provider_execution_service import (
+            ProviderExecutionService,
+        )
+
         adapter_registry = (
             LiveProviderAdapterRegistryService.from_environment(
                 configuration_service=configuration_service,
@@ -31,6 +36,7 @@ class LiveProviderExecutionServiceFactory:
         )
         return ProviderExecutionService(
             adapter_registry=adapter_registry,
+            events=events,
         )
 
 

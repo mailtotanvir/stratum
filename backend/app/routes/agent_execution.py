@@ -6,7 +6,9 @@ from app.models.agent_execution import (
 )
 from app.services.agent_execution_service import AgentExecutionService
 from app.services.event_service import event_service
-from app.services.provider_execution_service import ProviderExecutionService
+from app.services.provider_execution_service import (
+    provider_execution_service_default,
+)
 from app.services.runtime_session_service import (
     RuntimeSessionNotFoundError,
     runtime_session_service,
@@ -15,7 +17,9 @@ from app.services.runtime_session_service import (
 
 router = APIRouter()
 agent_execution_service = AgentExecutionService(
-    provider_execution=ProviderExecutionService(events=event_service),
+    provider_execution=provider_execution_service_default(
+        events=event_service,
+    ),
     events=event_service,
 )
 
