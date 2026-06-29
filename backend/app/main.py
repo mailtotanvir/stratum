@@ -1,3 +1,4 @@
+from app.routes import provider_health, provider_live_diagnostics, provider_live_verification
 from fastapi import FastAPI
 
 from app.routes.agent_execution import router as agent_execution_router
@@ -150,6 +151,9 @@ app.include_router(task_router)
 app.include_router(tool_router)
 app.include_router(tool_invocation_router)
 app.include_router(reconstruct_router)
+app.include_router(provider_live_diagnostics.router)
+app.include_router(provider_live_verification.router)
+app.include_router(provider_health.router)
 
 
 @app.get("/health")
