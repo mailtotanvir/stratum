@@ -1,6 +1,7 @@
 from app.routes import provider_health, provider_live_diagnostics, provider_live_verification
 from fastapi import FastAPI
 
+from app.routes.agent_loop import router as agent_loop_router
 from app.routes.agent_execution import router as agent_execution_router
 from app.routes.agent_execution_diagnostics import (
     router as agent_execution_diagnostics_router,
@@ -97,6 +98,7 @@ from app.routes.tool import router as tool_router
 from app.routes.tool_invocation import router as tool_invocation_router
 
 app = FastAPI(title="Stratum Backend")
+app.include_router(agent_loop_router)
 app.include_router(agent_execution_router)
 app.include_router(agent_execution_diagnostics_router)
 app.include_router(artifact_router)
