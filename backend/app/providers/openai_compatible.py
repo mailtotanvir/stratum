@@ -62,7 +62,7 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
         self,
         request: ProviderExecutionRequest,
     ) -> ProviderExecutionResult:
-        protocol_request = self._build_request(request)
+        protocol_request = self._build_request(request, stream=False)
         response = await self._transport.send(
             _transport_request(
                 protocol_request,
@@ -86,7 +86,7 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
         self,
         request: ProviderExecutionRequest,
     ) -> AsyncIterator[ProviderExecutionStreamEvent]:
-        protocol_request = self._build_request(request)
+        protocol_request = self._build_request(request, stream=True)
         chunks = self._transport.stream(
             _transport_request(
                 protocol_request,
@@ -103,8 +103,14 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
     def _build_request(
         self,
         request: ProviderExecutionRequest,
+        *,
+        stream: bool,
     ) -> OpenAIChatRequest:
         protocol_request = self._request_builder.build(request)
+        protocol_request = protocol_request.model_copy(
+            update={"stream": stream},
+            deep=True,
+        )
         return self._protocol_validator.validate_request(protocol_request)
 
 

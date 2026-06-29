@@ -142,3 +142,75 @@ def test_stream_output_is_deterministic() -> None:
     assert [item.model_dump(mode="json") for item in first] == [
         item.model_dump(mode="json") for item in second
     ]
+
+
+def test_parser_splits_multiple_sse_events_in_single_http_chunk() -> None:
+    first = (
+        b'data: {"choices":[{"delta":{"content":"A"},'
+        b'"finish_reason":null}]}\n\n'
+    )
+    second = (
+        b'data: {"choices":[{"delta":{"content":"B"},'
+        b'"finish_reason":null}]}\n\n'
+    )
+    done = b"data: [DONE]\n\n"
+
+    events = asyncio.run(collect(first + second + done))
+
+    assert [event.event_type for event in events] == [
+        "delta",
+        "delta",
+        "completed",
+    ]
+    assert [event.content for event in events] == ["A", "B", None]
+
+
+def test_parser_buffers_partial_sse_events_across_http_chunks() -> None:
+    events = asyncio.run(
+        collect(
+            b'data: {"choices":[{"delta":{"content":"Hel',
+            b'lo"},"finish_reason":null}]}\n\n',
+            b"data: [DONE]\n\n",
+        )
+    )
+
+    assert [event.event_type for event in events] == [
+        "delta",
+        "completed",
+    ]
+    assert events[0].content == "Hello"
+
+
+def test_parser_ignores_sse_comment_lines() -> None:
+    events = asyncio.run(
+        collect(
+            b": keepalive\n\n",
+            b'data: {"choices":[{"delta":{"content":"A"},'
+            b'"finish_reason":null}]}\n\n',
+            b"data: [DONE]\n\n",
+        )
+    )
+
+    assert [event.event_type for event in events] == [
+        "delta",
+        "completed",
+    ]
+    assert events[0].content == "A"
+
+
+def test_parser_ignores_extra_sse_data_after_done_marker() -> None:
+    events = asyncio.run(
+        collect(
+            b'data: {"choices":[{"delta":{"content":"A"},'
+            b'"finish_reason":null}]}\n\n',
+            b"data: [DONE]\n\n",
+            b'data: {"choices":[{"delta":{"content":"late"},'
+            b'"finish_reason":null}]}\n\n',
+        )
+    )
+
+    assert [event.event_type for event in events] == [
+        "delta",
+        "completed",
+    ]
+    assert [event.content for event in events] == ["A", None]

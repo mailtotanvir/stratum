@@ -276,3 +276,23 @@ def test_complete_preserves_transport_metadata() -> None:
 
     assert result.metadata["transport"]["status_code"] == 200
     assert result.metadata["transport"]["headers"] == {}
+
+
+def test_complete_forces_non_streaming_protocol_request() -> None:
+    transport = SpyTransport()
+    adapter = OpenAICompatibleProviderAdapter(transport=transport)
+
+    asyncio.run(adapter.complete(request()))
+
+    assert transport.request is not None
+    assert b'"stream":false' in transport.request.payload
+
+
+def test_stream_forces_streaming_protocol_request() -> None:
+    transport = SpyTransport()
+    adapter = OpenAICompatibleProviderAdapter(transport=transport)
+
+    asyncio.run(collect(adapter, request()))
+
+    assert transport.request is not None
+    assert b'"stream":true' in transport.request.payload

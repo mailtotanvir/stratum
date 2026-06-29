@@ -31,18 +31,16 @@ class OpenAIStreamParser:
         sequence = 0
         completed = False
 
-        async for raw_chunk in chunks:
-            payload = _decode_chunk(raw_chunk)
+        async for payload in _decode_sse_payloads(chunks):
             if payload is None:
                 if not completed:
                     yield _completed_event(request, sequence)
                     sequence += 1
                     completed = True
                 continue
+
             if completed:
-                raise OpenAIStreamParserError(
-                    "Received stream data after completion."
-                )
+                continue
 
             try:
                 chunk = self._validator.validate_stream_chunk(payload)
@@ -84,23 +82,60 @@ class OpenAIStreamParser:
                 completed = True
 
 
-def _decode_chunk(raw_chunk: bytes) -> dict | None:
-    try:
-        text = raw_chunk.decode("utf-8").strip()
-    except UnicodeDecodeError as exc:
-        raise OpenAIStreamParserError(
-            "Malformed OpenAI-compatible stream chunk."
-        ) from exc
-    if text.startswith("data:"):
-        text = text[5:].strip()
-    if text == "[DONE]":
-        return None
-    if not text:
+async def _decode_sse_payloads(
+    chunks: AsyncIterator[bytes],
+) -> AsyncIterator[dict | None]:
+    buffer = ""
+
+    async for raw_chunk in chunks:
+        try:
+            text = raw_chunk.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise OpenAIStreamParserError(
+                "Malformed OpenAI-compatible stream chunk."
+            ) from exc
+
+        if not buffer and "\n\n" not in text and _looks_like_json(text):
+            yield _decode_json_payload(text)
+            continue
+
+        buffer += text
+
+        while "\n\n" in buffer:
+            event_text, buffer = buffer.split("\n\n", 1)
+            payload = _decode_sse_event(event_text)
+            if payload is _EMPTY_EVENT:
+                continue
+            yield payload
+
+    if buffer.strip():
+        if _looks_like_json(buffer):
+            yield _decode_json_payload(buffer)
+            return
+        payload = _decode_sse_event(buffer)
+        if payload is _EMPTY_EVENT:
+            raise OpenAIStreamParserError(
+                "Malformed OpenAI-compatible stream chunk."
+            )
+        yield payload
+
+
+_EMPTY_EVENT = object()
+
+
+def _looks_like_json(text: str) -> bool:
+    stripped = text.strip()
+    return stripped.startswith("{") or stripped.startswith("[")
+
+
+def _decode_json_payload(text: str) -> dict:
+    stripped = text.strip()
+    if not stripped:
         raise OpenAIStreamParserError(
             "Malformed OpenAI-compatible stream chunk."
         )
     try:
-        payload = json.loads(text)
+        payload = json.loads(stripped)
     except json.JSONDecodeError as exc:
         raise OpenAIStreamParserError(
             "Malformed OpenAI-compatible stream chunk."
@@ -109,6 +144,41 @@ def _decode_chunk(raw_chunk: bytes) -> dict | None:
         raise OpenAIStreamParserError(
             "Malformed OpenAI-compatible stream chunk."
         )
+    return payload
+
+
+def _decode_sse_event(event_text: str) -> dict | None | object:
+    data_lines: list[str] = []
+    for line in event_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(":"):
+            continue
+        if stripped.startswith("data:"):
+            data_lines.append(stripped[5:].strip())
+
+    if not data_lines:
+        return _EMPTY_EVENT
+
+    text = "\n".join(data_lines).strip()
+    if text == "[DONE]":
+        return None
+    if not text:
+        return _EMPTY_EVENT
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise OpenAIStreamParserError(
+            "Malformed OpenAI-compatible stream chunk."
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise OpenAIStreamParserError(
+            "Malformed OpenAI-compatible stream chunk."
+        )
+
     return payload
 
 
