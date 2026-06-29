@@ -128,7 +128,11 @@ class SpyTransport(Transport):
             payload=(
                 b'{"choices":[{"message":{"role":"assistant",'
                 b'"content":"Injected."}}]}'
-            )
+            ),
+            metadata={
+                "status_code": 200,
+                "headers": {},
+            },
         )
 
     async def stream(
@@ -210,3 +214,65 @@ def test_request_is_not_mutated_and_result_is_deterministic() -> None:
 
     assert execution_request.model_dump(mode="json") == before
     assert first.model_dump(mode="json") == second.model_dump(mode="json")
+
+
+def test_complete_transport_request_includes_http_metadata() -> None:
+    transport = SpyTransport()
+    adapter = OpenAICompatibleProviderAdapter(transport=transport)
+
+    asyncio.run(adapter.complete(request()))
+
+    assert transport.request is not None
+    assert transport.request.metadata["method"] == "POST"
+    assert transport.request.metadata["headers"]["Content-Type"] == (
+        "application/json"
+    )
+
+
+def test_stream_transport_request_includes_http_metadata() -> None:
+    transport = SpyTransport()
+    adapter = OpenAICompatibleProviderAdapter(transport=transport)
+
+    asyncio.run(collect(adapter, request()))
+
+    assert transport.request is not None
+    assert transport.request.metadata["method"] == "POST"
+    assert transport.request.metadata["headers"]["Content-Type"] == (
+        "application/json"
+    )
+
+
+def test_adapter_accepts_custom_chat_completions_path() -> None:
+    transport = SpyTransport()
+    adapter = OpenAICompatibleProviderAdapter(
+        chat_completions_path="/custom/chat",
+        transport=transport,
+    )
+
+    asyncio.run(adapter.complete(request()))
+
+    assert transport.request is not None
+    assert transport.request.destination == "custom/chat"
+
+
+def test_adapter_rejects_empty_chat_completions_path() -> None:
+    with pytest.raises(
+        ValueError,
+        match="chat_completions_path must not be empty",
+    ):
+        OpenAICompatibleProviderAdapter(
+            chat_completions_path=" ",
+            transport=SpyTransport(),
+        )
+
+
+def test_complete_preserves_transport_metadata() -> None:
+    transport = SpyTransport()
+    adapter = OpenAICompatibleProviderAdapter(
+        transport=transport,
+    )
+
+    result = asyncio.run(adapter.complete(request()))
+
+    assert result.metadata["transport"]["status_code"] == 200
+    assert result.metadata["transport"]["headers"] == {}

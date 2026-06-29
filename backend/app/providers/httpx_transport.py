@@ -45,6 +45,12 @@ class HttpxTransport(Transport):
         except Exception as exc:  # noqa: BLE001
             raise TransportError(f"HTTP transport failed: {exc}") from exc
 
+        if response.status_code >= 400:
+            raise TransportError(
+                "HTTP transport failed with status "
+                f"{response.status_code}: {response.text}"
+            )
+
         return TransportResponse(
             payload=response.content,
             metadata={
@@ -67,6 +73,13 @@ class HttpxTransport(Transport):
                     params=self._params(request),
                     timeout=self._timeout_seconds,
                 ) as response:
+                    if response.status_code >= 400:
+                        body = await response.aread()
+                        raise TransportError(
+                            "HTTP stream transport failed with status "
+                            f"{response.status_code}: "
+                            f"{body.decode('utf-8', errors='replace')}"
+                        )
                     async for chunk in response.aiter_bytes():
                         if chunk:
                             yield chunk

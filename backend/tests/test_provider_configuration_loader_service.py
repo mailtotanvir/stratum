@@ -148,3 +148,18 @@ def test_does_not_modify_builtin_registry_when_nothing_configured() -> None:
 
     assert loaded is None
     assert service.snapshot() == before
+
+
+def test_loads_custom_endpoint_path_from_environment() -> None:
+    service = ProviderConfigurationService([])
+    loader = ProviderConfigurationLoaderService(
+        {
+            "STRATUM_PROVIDER_ID": "live",
+            "STRATUM_PROVIDER_ENDPOINT_PATH": "/responses",
+        }
+    )
+
+    loaded = loader.load_from_environment(service)
+
+    assert loaded is not None
+    assert loaded.metadata["chat_completions_path"] == "/responses"

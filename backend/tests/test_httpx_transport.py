@@ -122,3 +122,47 @@ def test_httpx_transport_does_not_mutate_request() -> None:
         await client.aclose()
 
     asyncio.run(run())
+
+
+def test_httpx_transport_send_http_error_status_raises_transport_error() -> None:
+    async def run() -> None:
+        async def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                401,
+                content=b'{"error":"invalid api key"}',
+            )
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        transport = HttpxTransport(client=client)
+
+        with pytest.raises(
+            TransportError,
+            match="HTTP transport failed with status 401",
+        ):
+            await transport.send(make_request())
+
+        await client.aclose()
+
+    asyncio.run(run())
+
+
+def test_httpx_transport_stream_http_error_status_raises_transport_error() -> None:
+    async def run() -> None:
+        async def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                429,
+                content=b'{"error":"rate limited"}',
+            )
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        transport = HttpxTransport(client=client)
+
+        with pytest.raises(
+            TransportError,
+            match="HTTP stream transport failed with status 429",
+        ):
+            _ = [chunk async for chunk in transport.stream(make_request())]
+
+        await client.aclose()
+
+    asyncio.run(run())

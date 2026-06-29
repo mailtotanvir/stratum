@@ -33,12 +33,19 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
     def __init__(
         self,
         *,
+        provider_id: str | None = None,
+        chat_completions_path: str = "chat/completions",
         request_builder: OpenAIRequestBuilder | None = None,
         response_parser: OpenAIResponseParser | None = None,
         stream_parser: OpenAIStreamParser | None = None,
         protocol_validator: OpenAIProtocolValidator | None = None,
         transport: Transport | None = None,
     ) -> None:
+        if provider_id is not None:
+            self.provider_id = provider_id
+        self._chat_completions_path = _validated_endpoint_path(
+            chat_completions_path
+        )
         self._request_builder = request_builder or OpenAIRequestBuilder()
         self._protocol_validator = (
             protocol_validator or OpenAIProtocolValidator()
@@ -57,10 +64,23 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
     ) -> ProviderExecutionResult:
         protocol_request = self._build_request(request)
         response = await self._transport.send(
-            _transport_request(protocol_request)
+            _transport_request(
+                protocol_request,
+                self._chat_completions_path,
+            )
         )
         response_body = _decode_response(response)
-        return self._response_parser.parse(response_body, request)
+        result = self._response_parser.parse(response_body, request)
+
+        metadata = dict(result.metadata)
+        metadata["transport"] = dict(response.metadata)
+
+        return result.model_copy(
+            update={
+                "metadata": metadata,
+            },
+            deep=True,
+        )
 
     async def stream(
         self,
@@ -68,7 +88,10 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
     ) -> AsyncIterator[ProviderExecutionStreamEvent]:
         protocol_request = self._build_request(request)
         chunks = self._transport.stream(
-            _transport_request(protocol_request)
+            _transport_request(
+                protocol_request,
+                self._chat_completions_path,
+            )
         )
         async for event in self._stream_parser.parse(chunks, request):
             yield event
@@ -87,6 +110,7 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
 
 def _transport_request(
     request: OpenAIChatRequest,
+    destination: str,
 ) -> TransportRequest:
     payload = json.dumps(
         request.model_dump(mode="json", exclude_none=True),
@@ -94,9 +118,22 @@ def _transport_request(
         separators=(",", ":"),
     ).encode("utf-8")
     return TransportRequest(
-        destination="chat/completions",
+        destination=destination,
         payload=payload,
+        metadata={
+            "method": "POST",
+            "headers": {
+                "Content-Type": "application/json",
+            },
+        },
     )
+
+
+def _validated_endpoint_path(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("chat_completions_path must not be empty")
+    return stripped.lstrip("/")
 
 
 def _decode_response(response: TransportResponse) -> dict:

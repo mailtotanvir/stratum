@@ -400,4 +400,12 @@ def _usage_metadata(
     }
 
 
-provider_execution_service = ProviderExecutionService()
+def provider_execution_service_default() -> ProviderExecutionService:
+    from app.services.live_provider_execution_service import (
+        live_provider_execution_service_factory,
+    )
+
+    return live_provider_execution_service_factory.create_from_environment()
+
+
+provider_execution_service = provider_execution_service_default()

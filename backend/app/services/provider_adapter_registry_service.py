@@ -39,6 +39,9 @@ class ProviderAdapterRegistryService:
     def has_adapter(self, provider_id: str) -> bool:
         return provider_id in self._adapters
 
+    def register(self, adapter: ProviderAdapter) -> None:
+        self._register(adapter)
+
     def _register(self, adapter: ProviderAdapter) -> None:
         provider_id = adapter.provider_id
         if provider_id in self._adapters:

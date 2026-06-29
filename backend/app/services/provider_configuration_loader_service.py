@@ -31,6 +31,7 @@ class ProviderConfigurationLoaderService:
         base_url = self._read("STRATUM_PROVIDER_BASE_URL")
         api_key = self._read("STRATUM_PROVIDER_API_KEY")
         model = self._read("STRATUM_PROVIDER_MODEL")
+        endpoint_path = self._read("STRATUM_PROVIDER_ENDPOINT_PATH")
         enabled = self._read_bool("STRATUM_PROVIDER_ENABLED", default=False)
 
         existing = service.get(provider_id) if service.has(provider_id) else None
@@ -108,6 +109,11 @@ class ProviderConfigurationLoaderService:
                 **(existing.metadata if existing is not None else {}),
                 "configuration_source": "environment",
                 **({"api_key": api_key} if api_key is not None else {}),
+                **(
+                    {"chat_completions_path": endpoint_path}
+                    if endpoint_path is not None
+                    else {}
+                ),
             },
         )
 
