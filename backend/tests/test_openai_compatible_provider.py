@@ -96,6 +96,11 @@ def test_successful_completion_maps_request_and_response() -> None:
     assert result.model == "test-model"
     assert result.content == "Compatible response."
     assert result.raw_response == success_payload()
+    assert result.metadata["provider"] == "openai-compatible"
+    assert result.metadata["provider_id"] == "openai-compatible"
+    assert result.metadata["model"] == "test-model"
+    assert result.metadata["status"] == "completed"
+    assert result.metadata["content"] == "Compatible response."
     assert captured["url"] == (
         "https://provider.example/v1/chat/completions"
     )

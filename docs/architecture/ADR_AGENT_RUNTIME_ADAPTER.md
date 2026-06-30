@@ -51,3 +51,24 @@ Keeping the Agent Runtime Adapter boundary explicit preserves an enterprise-scal
 path. If Stratum later needs BEAM-style supervision or distributed execution, the
 backend can be replaced without rewriting the task API, governance flow, event
 stream, proposal path, or artifact interfaces.
+
+## Appendix: Everything as a Marketplace Adapter
+
+Stratum should treat external agent systems as replaceable marketplace
+adapters, not as part of the runtime core.
+
+This means:
+
+- hosted agents, multi-agent systems, research agents, coding agents, marketing
+  agents, MCP servers, and A2A-compatible agents all integrate through
+  adapters
+- Stratum keeps governance, observation, approvals, audit trail, artifacts, and
+  event history under its own control
+- agent providers and ecosystems remain swappable without changing the
+  substrate
+- future MCP and A2A protocol support should be implemented at the adapter
+  layer, not by coupling those protocols into runtime internals
+
+The architectural intent is to preserve a stable Stratum core while allowing
+many external agent products and ecosystems to plug in, evolve, or be replaced
+independently.

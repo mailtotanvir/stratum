@@ -15,6 +15,7 @@ from app.models.provider_execution_validation import (
 )
 from app.models.provider_routing import (
     ProviderRoutingDecision,
+    ProviderRoutingRequest,
     ProviderRoutingResult,
 )
 from app.models.runtime_event import EventType, Severity
@@ -35,6 +36,14 @@ from app.services.provider_router_service import (
     ProviderRouterService,
     provider_router_service,
 )
+from app.services.provider_routing_policy_service import (
+    ProviderRoutingPolicyService,
+    provider_routing_policy_service,
+)
+from app.services.provider_budget_policy_service import (
+    ProviderBudgetPolicyService,
+    provider_budget_policy_service,
+)
 
 
 class ProviderExecutionService:
@@ -42,6 +51,8 @@ class ProviderExecutionService:
         self,
         adapter_registry: ProviderAdapterRegistryService | None = None,
         router: ProviderRouterService | None = None,
+        routing_policy: ProviderRoutingPolicyService | None = None,
+        budget_policy: ProviderBudgetPolicyService | None = None,
         provider_registry: ProviderRegistry | None = None,
         validator: ProviderExecutionValidatorService | None = None,
         events: EventService | None = None,
@@ -50,6 +61,8 @@ class ProviderExecutionService:
             adapter_registry or provider_adapter_registry_service
         )
         self._router = router or provider_router_service
+        self._routing_policy = routing_policy or provider_routing_policy_service
+        self._budget_policy = budget_policy or provider_budget_policy_service
         self._provider_registry = provider_registry or provider_registry_default()
         self._validator = validator or provider_execution_validator_service
         self._events = events
@@ -58,15 +71,21 @@ class ProviderExecutionService:
         self,
         request: ProviderExecutionRequest,
     ) -> ProviderExecutionResult:
-        adapter = self._adapter_registry.get_adapter(request.provider_id)
-        return await adapter.complete(request)
+        effective_request, _ = self._resolve_request(request)
+        adapter = self._adapter_registry.get_adapter(
+            effective_request.provider_id
+        )
+        return await adapter.complete(effective_request)
 
     async def stream(
         self,
         request: ProviderExecutionRequest,
     ) -> AsyncIterator[ProviderExecutionStreamEvent]:
-        adapter = self._adapter_registry.get_adapter(request.provider_id)
-        async for event in adapter.stream(request):
+        effective_request, _ = self._resolve_request(request)
+        adapter = self._adapter_registry.get_adapter(
+            effective_request.provider_id
+        )
+        async for event in adapter.stream(effective_request):
             yield event
 
     async def cancel(
@@ -74,6 +93,9 @@ class ProviderExecutionService:
         provider_id: str,
         execution_id: str,
     ) -> None:
+        provider_id = self._routing_policy.resolve(
+            ProviderRoutingRequest(requested_provider_id=provider_id)
+        ).provider_id
         adapter = self._adapter_registry.get_adapter(provider_id)
         await adapter.cancel(execution_id)
 
@@ -81,6 +103,7 @@ class ProviderExecutionService:
         self,
         request: ProviderExecutionRequest,
     ) -> ProviderExecutionRecord:
+        request, routing_policy_decision = self._resolve_request(request)
         created_at = datetime.now(UTC)
         record = ProviderExecutionRecord(
             id=_record_id(request),
@@ -184,7 +207,23 @@ class ProviderExecutionService:
             )
             return failed_record
 
-        routing = _routing_metadata(request, routing_result.decision)
+        routing = _routing_metadata(
+            request,
+            routing_result.decision,
+            routing_policy_decision,
+        )
+        budget_policy = self._budget_policy.resolve(
+            provider_id=routing_result.decision.provider_id,
+            model=routing_result.decision.model,
+            budget_mode=request.metadata.get("budget_mode"),
+            task_type=request.metadata.get("task_type"),
+            estimated_input_tokens=request.metadata.get(
+                "estimated_input_tokens"
+            ),
+            estimated_output_tokens=request.metadata.get(
+                "estimated_output_tokens"
+            ),
+        )
         try:
             adapter = self._provider_registry.provider(
                 routing_result.decision.adapter_provider_name
@@ -214,6 +253,7 @@ class ProviderExecutionService:
                             "error_type": type(exc).__name__,
                             "routing": routing,
                         },
+                        routing=routing,
                     ),
                 },
                 deep=True,
@@ -234,11 +274,33 @@ class ProviderExecutionService:
         metadata = dict(record.metadata)
         metadata["validation"] = validation.metadata
         metadata["routing"] = routing
+        metadata["budget_policy"] = {
+            "classification": budget_policy.classification,
+            "warnings": budget_policy.warnings,
+            "metadata": budget_policy.metadata,
+        }
+        result_metadata = {
+            **result.metadata,
+            **_execution_result_metadata(request, routing_result.decision),
+            "budget_policy": metadata["budget_policy"],
+        }
         completed_record = record.model_copy(
             update={
                 "status": result.status,
                 "completed_at": datetime.now(UTC),
-                "result": result,
+                "result": result.model_copy(
+                    update={
+                        "effective_provider_id": routing_result.decision.provider_id,
+                        "effective_model": routing_result.decision.model,
+                        "routing_reason": routing_result.decision.reason,
+                        "routing_source": routing_result.decision.source,
+                        "budget_mode": request.metadata.get("budget_mode"),
+                        "task_type": request.metadata.get("task_type"),
+                        "budget_policy": metadata["budget_policy"],
+                        "metadata": result_metadata,
+                    },
+                    deep=True,
+                ),
                 "metadata": metadata,
             },
             deep=True,
@@ -253,6 +315,7 @@ class ProviderExecutionService:
                 routing_decision=routing_result.decision,
                 latency_ms=result.latency_ms,
                 usage=_usage_metadata(result),
+                budget_policy=metadata["budget_policy"],
             )
         elif result.status == ProviderExecutionStatus.FAILED:
             self._emit(
@@ -265,6 +328,7 @@ class ProviderExecutionService:
                 routing_decision=routing_result.decision,
                 latency_ms=result.latency_ms,
                 usage=_usage_metadata(result),
+                budget_policy=metadata["budget_policy"],
                 error_type="ProviderExecutionError",
                 error_message=result.error_message,
             )
@@ -281,6 +345,7 @@ class ProviderExecutionService:
         status: ProviderExecutionStatus,
         latency_ms: int | None = None,
         usage: dict | None = None,
+        budget_policy: dict | None = None,
         validation_issue_codes: list[str] | None = None,
         routing_decision: ProviderRoutingDecision | None = None,
         routing_result: ProviderRoutingResult | None = None,
@@ -313,6 +378,7 @@ class ProviderExecutionService:
             "status": status.value,
             "latency_ms": latency_ms,
             "usage": usage,
+            "budget_policy": budget_policy,
             "validation_issue_codes": validation_issue_codes,
             "error_type": error_type,
             "error_message": error_message,
@@ -327,6 +393,28 @@ class ProviderExecutionService:
                 if value is not None
             },
         )
+
+    def _resolve_request(
+        self,
+        request: ProviderExecutionRequest,
+    ) -> tuple[ProviderExecutionRequest, ProviderRoutingDecision]:
+        decision = self._routing_policy.resolve(
+            ProviderRoutingRequest(
+                requested_provider_id=request.provider,
+                requested_model=request.model,
+                task_type=request.metadata.get("task_type"),
+                budget_mode=request.metadata.get("budget_mode"),
+                metadata=dict(request.metadata),
+            )
+        )
+        resolved_request = request.model_copy(
+            update={
+                "provider": decision.provider_id,
+                "model": decision.model,
+            },
+            deep=True,
+        )
+        return resolved_request, decision
 
 
 def provider_registry_default() -> ProviderRegistry:
@@ -347,13 +435,26 @@ def _failed_result(
     request: ProviderExecutionRequest,
     error_message: str,
     metadata: dict,
+    routing: dict[str, str] | None = None,
 ) -> ProviderExecutionResult:
     return ProviderExecutionResult(
         status=ProviderExecutionStatus.FAILED,
         provider=request.provider,
         model=request.model,
         error_message=error_message,
-        metadata=metadata,
+        effective_provider_id=(routing or {}).get("effective_provider_id"),
+        effective_model=(routing or {}).get("effective_model"),
+        routing_reason=(routing or {}).get("routing_reason"),
+        routing_source=(routing or {}).get("routing_source"),
+        budget_mode=request.metadata.get("budget_mode"),
+        task_type=request.metadata.get("task_type"),
+        metadata={
+            "provider": request.provider,
+            "provider_id": request.provider_id,
+            "model": request.model,
+            "status": ProviderExecutionStatus.FAILED.value,
+            **metadata,
+        },
     )
 
 
@@ -368,12 +469,36 @@ def _validation_error_message(
 def _routing_metadata(
     request: ProviderExecutionRequest,
     decision: ProviderRoutingDecision,
+    policy_decision: ProviderRoutingDecision | None,
 ) -> dict[str, str]:
-    return {
+    metadata = {
+        "effective_provider_id": decision.provider_id,
+        "effective_model": decision.model,
+        "routing_reason": decision.reason,
+        "routing_source": decision.source,
+        "budget_mode": request.metadata.get("budget_mode"),
+        "task_type": request.metadata.get("task_type"),
         "requested_provider": request.provider,
         "resolved_provider": decision.provider,
         "adapter_provider": decision.adapter_provider_name,
         "resolved_model": decision.model,
+    }
+    if policy_decision is not None:
+        metadata["policy_source"] = policy_decision.source
+    return metadata
+
+
+def _execution_result_metadata(
+    request: ProviderExecutionRequest,
+    decision: ProviderRoutingDecision,
+) -> dict[str, str | None]:
+    return {
+        "effective_provider_id": decision.provider_id,
+        "effective_model": decision.model,
+        "routing_reason": decision.reason,
+        "routing_source": decision.source,
+        "budget_mode": request.metadata.get("budget_mode"),
+        "task_type": request.metadata.get("task_type"),
     }
 
 

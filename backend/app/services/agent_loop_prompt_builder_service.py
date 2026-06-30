@@ -15,9 +15,8 @@ def _system_prompt(tools: AgentToolRegistryService) -> str:
     )
     return f"""You are the deterministic reasoning engine for Stratum.
 
-Return exactly one of these JSON objects:
-{{"tool":"final_answer","arguments":{{"answer":"..."}}}}
-{{"tool":"observe","arguments":{{"message":"..."}}}}
+Return exactly one JSON object with this shape:
+{{"tool":"<registered tool name>","arguments":{{}}}}
 
 Valid tools:
 {tool_definitions}
@@ -59,9 +58,8 @@ class AgentLoopPromptBuilderService:
             if (
                 step.provider_output is None
                 or step.tool_call is None
-                or step.tool_call.tool != "observe"
                 or step.tool_result is None
-                or step.tool_result.tool != "observe"
+                or step.tool_result.completion_intent
             ):
                 continue
             messages.extend(

@@ -205,11 +205,60 @@ def test_validation_metadata_is_included_on_successful_record() -> None:
         "status": "available",
     }
     assert record.metadata["routing"] == {
+        "effective_provider_id": "mock",
+        "effective_model": "mock-large",
+        "routing_reason": "explicit_request",
+        "routing_source": "explicit_request",
+        "budget_mode": None,
+        "task_type": None,
         "requested_provider": "mock",
         "resolved_provider": "mock",
         "adapter_provider": "mock",
         "resolved_model": "mock-large",
+        "policy_source": "explicit_request",
     }
+    assert record.result is not None
+    assert record.result.effective_provider_id == "mock"
+    assert record.result.effective_model == "mock-large"
+    assert record.result.routing_reason == "explicit_request"
+    assert record.result.routing_source == "explicit_request"
+    assert record.result.metadata["provider"] == "mock"
+    assert record.result.metadata["model"] == "mock-large"
+    assert record.result.metadata["routing"]["policy_source"] == "explicit_request"
+
+
+def test_default_routing_metadata_is_present() -> None:
+    record = ProviderExecutionService().execute(request(provider="missing", model="missing"))
+
+    assert record.result is not None
+    assert record.result.effective_provider_id == "mock"
+    assert record.result.effective_model == "mock-large"
+    assert record.result.routing_reason == "default_configuration"
+    assert record.result.routing_source == "default_configuration"
+    assert record.result.budget_mode is None
+    assert record.result.task_type is None
+
+
+def test_explicit_provider_and_model_metadata_is_preserved() -> None:
+    record = ProviderExecutionService().execute(
+        request(provider="mock", model="mock-large")
+    )
+
+    assert record.provider_id == "mock"
+    assert record.request.provider == "mock"
+    assert record.request.model == "mock-large"
+    assert record.result is not None
+    assert record.result.provider == "mock"
+    assert record.result.model == "mock-large"
+
+
+def test_no_secrets_appear_in_result_metadata() -> None:
+    record = ProviderExecutionService().execute(request())
+
+    assert record.result is not None
+    metadata_text = str(record.result.metadata)
+    for secret_field in ("api_key", "authorization", "secret", "token"):
+        assert secret_field not in metadata_text
 
 
 def test_failed_validation_metadata_includes_issues() -> None:
@@ -325,6 +374,7 @@ def test_alias_provider_resolves_through_adapter() -> None:
         "resolved_provider": "openrouter",
         "adapter_provider": "openai-compatible",
         "resolved_model": "provider-routed",
+        "policy_source": "explicit_request",
     }
 
 

@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException
 
 from app.models.provider_observability import (
     ModelUsageSummary,
+    ProviderExecutionRecentItem,
+    ProviderExecutionSummary,
     ProviderCostSummary,
     ProviderObservabilityReport,
 )
@@ -48,3 +50,15 @@ def get_provider_costs() -> list[ProviderCostSummary]:
         return provider_observability_service.cost_summary()
     except ProviderObservabilityGenerationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/runtime/providers/executions/summary")
+@router.get("/providers/executions/summary")
+def get_provider_execution_summary() -> ProviderExecutionSummary:
+    return provider_observability_service.execution_summary()
+
+
+@router.get("/runtime/providers/executions/recent")
+@router.get("/providers/executions/recent")
+def get_provider_execution_recent() -> list[ProviderExecutionRecentItem]:
+    return provider_observability_service.recent_executions()

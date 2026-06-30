@@ -102,17 +102,18 @@ class ProviderRouterService:
         return ProviderRoutingResult(
             resolved=True,
             decision=ProviderRoutingDecision(
-                provider=provider,
+                provider_id=provider,
                 model=resolved_model,
-                adapter_provider_name=adapter_provider_name,
-                base_url=configuration.base_url,
-                timeout_seconds=configuration.timeout_seconds,
-                enabled=configuration.enabled,
                 reason=(
                     "configured_alias_resolved"
                     if is_alias
                     else "configured_provider_resolved"
                 ),
+                source="configured",
+                adapter_provider_name=adapter_provider_name,
+                base_url=configuration.base_url,
+                timeout_seconds=configuration.timeout_seconds,
+                enabled=configuration.enabled,
                 metadata={
                     "alias": is_alias,
                     "capability_status": descriptor.status.value,

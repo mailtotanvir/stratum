@@ -14,6 +14,9 @@ from app.models.provider_execution import (
     ProviderStreamMode,
     ProviderUsage,
 )
+from app.services.provider_budget_policy_service import (
+    ProviderBudgetPolicyService,
+)
 
 
 def provider_message() -> ProviderMessage:
@@ -192,3 +195,82 @@ def test_provider_execution_record_creation() -> None:
     assert record.result == result
     assert record.result.usage.total_tokens == 12
     assert record.status == ProviderExecutionStatus.COMPLETED
+
+
+def test_provider_execution_result_has_stable_shape() -> None:
+    result = ProviderExecutionResult(
+        status=ProviderExecutionStatus.COMPLETED,
+        provider="openrouter",
+        model="gpt-test",
+        content="Done.",
+        metadata={"adapter": "openai-compatible"},
+    )
+
+    assert result.provider == "openrouter"
+    assert result.model == "gpt-test"
+    assert result.status == ProviderExecutionStatus.COMPLETED
+    assert result.content == "Done."
+
+
+def test_provider_execution_result_accepts_routing_metadata() -> None:
+    result = ProviderExecutionResult(
+        status=ProviderExecutionStatus.COMPLETED,
+        provider="openrouter",
+        model="gpt-test",
+        effective_provider_id="mock",
+        effective_model="mock-large",
+        routing_reason="explicit_request",
+        routing_source="explicit_request",
+        budget_mode="standard",
+        task_type="analysis",
+        content="Done.",
+    )
+
+    assert result.effective_provider_id == "mock"
+    assert result.effective_model == "mock-large"
+    assert result.routing_reason == "explicit_request"
+    assert result.routing_source == "explicit_request"
+    assert result.budget_mode == "standard"
+    assert result.task_type == "analysis"
+
+
+def test_provider_budget_policy_classifications() -> None:
+    service = ProviderBudgetPolicyService()
+
+    assert (
+        service.resolve(provider_id="mock", model="tiny-mini").classification
+        == "cheap"
+    )
+    assert (
+        service.resolve(
+            provider_id="mock", model="claude-sonnet-4.5"
+        ).classification
+        == "balanced"
+    )
+    assert (
+        service.resolve(provider_id="mock", model="gpt-4-opus").classification
+        == "premium"
+    )
+
+
+def test_provider_budget_policy_unknown_fallback() -> None:
+    service = ProviderBudgetPolicyService()
+
+    result = service.resolve(provider_id="mock", model="model-123")
+
+    assert result.classification == "unknown"
+    assert result.warnings == []
+
+
+def test_provider_budget_policy_warns_on_premium_under_cheap_budget() -> None:
+    service = ProviderBudgetPolicyService()
+
+    result = service.resolve(
+        provider_id="mock",
+        model="gpt-4-opus",
+        budget_mode="cheap",
+    )
+
+    assert result.classification == "cheap"
+    assert result.warnings
+    assert "cheap budget_mode" in result.warnings[0]

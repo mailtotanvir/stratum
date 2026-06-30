@@ -14,6 +14,7 @@ from app.services.proposal_artifact_service import proposal_artifact_service
 from app.services.reflection_service import reflection_service
 from app.services.runtime_artifact_service import runtime_artifact_service
 from app.services.runtime_execution_service import runtime_execution_service
+from app.services.agent_invocation_service import agent_invocation_service
 from app.services.runtime_session_service import runtime_session_service
 from app.services.stop_service import stop_service
 from app.services.tool_registry_service import tool_registry_service
@@ -37,6 +38,7 @@ def use_temp_trace_store(tmp_path):
     reflection_service.set_db_path(tmp_path / "reflections.db")
     runtime_artifact_service.set_db_path(tmp_path / "runtime_artifacts.db")
     runtime_execution_service.set_db_path(tmp_path / "runtime.db")
+    agent_invocation_service.reset()
     runtime_session_service.set_db_path(tmp_path / "runtime_sessions.db")
     stop_service.set_db_path(tmp_path / "stops.db")
     tool_invocation_service.set_db_path(tmp_path / "tool_invocations.db")

@@ -61,3 +61,23 @@ class ProviderObservabilityReport(BaseModel):
     estimated: bool = True
     metadata: dict[str, object] = Field(default_factory=dict)
     observability_metrics: dict[str, float | int] = Field(default_factory=dict)
+
+
+class ProviderExecutionSummary(BaseModel):
+    total_executions: int = Field(ge=0)
+    completed: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    by_provider: dict[str, int] = Field(default_factory=dict)
+    by_model: dict[str, int] = Field(default_factory=dict)
+    budget_warnings_count: int = Field(default=0, ge=0)
+
+
+class ProviderExecutionRecentItem(BaseModel):
+    provider_id: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    routing_source: str | None = None
+    routing_reason: str | None = None
+    budget_policy: dict[str, object] | None = None
+    created_at: datetime | None = None
+    timestamp: str | None = None

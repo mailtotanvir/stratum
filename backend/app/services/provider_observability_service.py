@@ -6,6 +6,8 @@ from typing import Any
 
 from app.models.provider_observability import (
     ModelUsageSummary,
+    ProviderExecutionRecentItem,
+    ProviderExecutionSummary,
     ProviderCostSummary,
     ProviderLatencySummary,
     ProviderObservabilityReport,
@@ -22,8 +24,27 @@ PROVIDER_OBSERVABILITY_EVENT_TYPES = frozenset(
         EventType.PROVIDER_COST_ESTIMATE_GENERATED.value,
     }
 )
+PROVIDER_EXECUTION_EVENT_TYPES = frozenset(
+    {
+        EventType.AGENT_LOOP_PROVIDER_COMPLETED.value,
+        EventType.PROVIDER_EXECUTION_COMPLETED.value,
+        EventType.PROVIDER_EXECUTION_FAILED.value,
+    }
+)
+AGENT_LOOP_PROVIDER_EXECUTION_EVENT_TYPES = frozenset(
+    {
+        EventType.AGENT_LOOP_PROVIDER_COMPLETED.value,
+    }
+)
 PROVIDER_NAME_FIELDS = ("provider_name", "provider", "llm_provider")
 MODEL_NAME_FIELDS = ("model_name", "model", "llm_model")
+PROVIDER_EXECUTION_PROVIDER_FIELDS = (
+    "provider_id",
+    "provider",
+    "requested_provider",
+    "resolved_provider",
+)
+PROVIDER_EXECUTION_MODEL_FIELDS = ("model", "effective_model")
 LATENCY_FIELDS = (
     "latency_ms",
     "duration_ms",
@@ -135,6 +156,92 @@ class ProviderObservabilityService:
 
     def cost_summary(self) -> list[ProviderCostSummary]:
         return self.generate().costs
+
+    def execution_summary(self) -> ProviderExecutionSummary:
+        completed = 0
+        failed = 0
+        by_provider: dict[str, int] = {}
+        by_model: dict[str, int] = {}
+        budget_warnings_count = 0
+
+        for event in self._provider_execution_events():
+            provider = _string_field(
+                event.metadata, PROVIDER_EXECUTION_PROVIDER_FIELDS
+            )
+            model = _string_field(
+                event.metadata, PROVIDER_EXECUTION_MODEL_FIELDS
+            )
+            status = _string_field(event.metadata, ("status",))
+            if provider is None or model is None or status is None:
+                continue
+            by_provider[provider] = by_provider.get(provider, 0) + 1
+            by_model[model] = by_model.get(model, 0) + 1
+            if status == "completed":
+                completed += 1
+            elif status == "failed":
+                failed += 1
+            budget_policy = event.metadata.get("budget_policy")
+            warnings = (
+                budget_policy.get("warnings")
+                if isinstance(budget_policy, dict)
+                else None
+            )
+            if isinstance(warnings, list):
+                budget_warnings_count += len(warnings)
+
+        return ProviderExecutionSummary(
+            total_executions=completed + failed,
+            completed=completed,
+            failed=failed,
+            by_provider=dict(sorted(by_provider.items())),
+            by_model=dict(sorted(by_model.items())),
+            budget_warnings_count=budget_warnings_count,
+        )
+
+    def recent_executions(
+        self,
+        limit: int = 20,
+    ) -> list[ProviderExecutionRecentItem]:
+        recent: list[ProviderExecutionRecentItem] = []
+        for event in self._provider_execution_events():
+            provider = _string_field(
+                event.metadata, PROVIDER_EXECUTION_PROVIDER_FIELDS
+            )
+            model = _string_field(
+                event.metadata, PROVIDER_EXECUTION_MODEL_FIELDS
+            )
+            status = _string_field(event.metadata, ("status",))
+            if provider is None or model is None or status is None:
+                continue
+            recent.append(
+                ProviderExecutionRecentItem(
+                    provider_id=provider,
+                    model=model,
+                    status=status,
+                    routing_source=_string_field(
+                        event.metadata, ("routing_source",)
+                    ),
+                    routing_reason=_string_field(
+                        event.metadata, ("routing_reason",)
+                    ),
+                    budget_policy=(
+                        event.metadata["budget_policy"]
+                        if isinstance(event.metadata.get("budget_policy"), dict)
+                        else None
+                    ),
+                    created_at=_event_datetime(event),
+                    timestamp=event.ts,
+                )
+            )
+
+        recent.sort(
+            key=lambda item: (
+                item.created_at or datetime.min.replace(tzinfo=UTC),
+                item.timestamp or "",
+            ),
+            reverse=True,
+        )
+        return recent[:limit]
 
     def observability_metrics(self) -> dict[str, float | int]:
         return {
@@ -327,6 +434,25 @@ class ProviderObservabilityService:
             for event in self._events.list_persisted_events()
             if event.type.value not in PROVIDER_OBSERVABILITY_EVENT_TYPES
         ]
+
+    def _provider_execution_events(self) -> list[RuntimeEvent]:
+        agent_loop_events = [
+            event
+            for event in self._source_events()
+            if event.type.value in AGENT_LOOP_PROVIDER_EXECUTION_EVENT_TYPES
+        ]
+        events = agent_loop_events or [
+            event
+            for event in self._source_events()
+            if event.type.value in PROVIDER_EXECUTION_EVENT_TYPES
+        ]
+        events.sort(
+            key=lambda event: (
+                _event_datetime(event) or datetime.min.replace(tzinfo=UTC),
+                event.id,
+            )
+        )
+        return events
 
     def _duration_ms(self, started_at: float) -> float:
         return round(max(0.0, (self._timer() - started_at) * 1000), 3)

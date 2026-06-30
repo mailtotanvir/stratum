@@ -98,6 +98,12 @@ class ProviderExecutionResult(BaseModel):
     status: ProviderExecutionStatus
     provider: str = Field(min_length=1)
     model: str = Field(min_length=1)
+    effective_provider_id: str | None = None
+    effective_model: str | None = None
+    routing_reason: str | None = None
+    routing_source: str | None = None
+    budget_mode: str | None = None
+    task_type: str | None = None
     content: str | None = None
     raw_response: dict[str, Any] | None = None
     usage: ProviderUsage | None = None

@@ -40,9 +40,13 @@ def entry(
 
 
 def test_query_health_route_works() -> None:
-    response = TestClient(app).get("/runtime/query-health")
+    client = TestClient(app)
+    response = client.get("/runtime/query-health")
+    alias_response = client.get("/runtime/queries/health")
 
     assert response.status_code == 200
+    assert alias_response.status_code == 200
+    assert alias_response.json() == response.json()
     body = response.json()
     assert body["query_surface_count"] == 24
     assert body["registered_projection_count"] == 24

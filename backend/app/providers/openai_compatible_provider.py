@@ -151,6 +151,11 @@ class OpenAICompatibleProvider(BaseProvider):
             usage=usage,
             latency_ms=_latency_ms(started_at, self._clock()),
             metadata={
+                "provider": request.provider,
+                "provider_id": request.provider_id,
+                "model": request.model,
+                "status": ProviderExecutionStatus.COMPLETED.value,
+                "content": content,
                 "adapter": self.provider_name(),
                 "endpoint": endpoint,
                 "status_code": response.status_code,
@@ -198,6 +203,10 @@ class OpenAICompatibleProvider(BaseProvider):
         raw_response: dict[str, Any] | None = None,
     ) -> ProviderExecutionResult:
         metadata: dict[str, Any] = {
+            "provider": request.provider,
+            "provider_id": request.provider_id,
+            "model": request.model,
+            "status": ProviderExecutionStatus.FAILED.value,
             "adapter": self.provider_name(),
             "endpoint": f"{self._base_url}/chat/completions",
             "error_type": error_type,

@@ -20,6 +20,17 @@ class RuntimeEventRecord(Base):
     metadata_json: Mapped[str] = mapped_column(Text)
 
 
+class RuntimeWorkspaceRecord(Base):
+    __tablename__ = "runtime_workspaces"
+
+    workspace_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, index=True)
+    root_path: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    metadata_json: Mapped[str] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, index=True)
+
+
 class TaskRecord(Base):
     __tablename__ = "tasks"
 
@@ -95,6 +106,20 @@ class RuntimeArtifactLinkRecord(Base):
     session_id: Mapped[str | None] = mapped_column(Text, index=True)
     artifact_id: Mapped[str] = mapped_column(Text, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class RuntimeWorkspaceArtifactRecord(Base):
+    __tablename__ = "runtime_workspace_artifacts"
+
+    artifact_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(Text, index=True)
+    session_id: Mapped[str | None] = mapped_column(Text, index=True)
+    tool: Mapped[str] = mapped_column(Text, index=True)
+    path: Mapped[str | None] = mapped_column(Text, index=True)
+    artifact_type: Mapped[str] = mapped_column(Text, index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    metadata_json: Mapped[str] = mapped_column(Text)
 
 
 class ProposalArtifactLinkRecord(Base):

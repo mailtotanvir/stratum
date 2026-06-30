@@ -298,8 +298,11 @@ def test_runtime_registry_contains_existing_builders() -> None:
         POLICY_EVIDENCE_PROJECTION_TYPE,
         POLICY_SUMMARY_PROJECTION_TYPE,
         RECOMMENDATION_OUTCOME_PROJECTION_TYPE,
+        "repository_memory",
         SESSION_AGENT_EXECUTION_PROJECTION_TYPE,
         SESSION_DECISION_PROJECTION_TYPE,
+        "session_memory",
+        "working_memory",
     ]
     assert (
         projection_registry.get(ARTIFACT_LINEAGE_PROJECTION_TYPE)

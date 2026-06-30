@@ -9,6 +9,13 @@ class AgentLoopStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     STOPPED = "stopped"
+    PAUSED = "paused"
+
+
+class AgentLoopApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class AgentLoopToolDefinition(BaseModel):
@@ -16,6 +23,7 @@ class AgentLoopToolDefinition(BaseModel):
     description: str
     argument_schema: dict[str, Any]
     completion_tool: bool = False
+    requires_approval: bool = False
 
 
 class AgentLoopToolCall(BaseModel):
@@ -34,6 +42,10 @@ class AgentLoopToolResult(BaseModel):
     tool: str = Field(min_length=1)
     output: str
     completion_intent: bool = False
+    event_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        exclude=True,
+    )
 
 
 class AgentLoopStep(BaseModel):
@@ -48,6 +60,7 @@ class AgentLoopRequest(BaseModel):
     session_id: str = Field(min_length=1)
     user_request: str = Field(min_length=1)
     max_iterations: int = Field(default=5, ge=1)
+    workspace_id: str | None = None
     provider_id: str | None = None
     model: str | None = None
 
@@ -58,7 +71,7 @@ class AgentLoopRequest(BaseModel):
             raise ValueError("must not be empty")
         return value
 
-    @field_validator("provider_id", "model")
+    @field_validator("workspace_id", "provider_id", "model")
     @classmethod
     def reject_blank_optional_text(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
@@ -70,10 +83,11 @@ class AgentLoopSmokeRequest(BaseModel):
     session_id: str | None = Field(default=None, min_length=1)
     user_request: str = Field(min_length=1)
     max_iterations: int = Field(default=3, ge=1)
+    workspace_id: str | None = None
     provider_id: str | None = None
     model: str | None = None
 
-    @field_validator("session_id", "provider_id", "model")
+    @field_validator("session_id", "workspace_id", "provider_id", "model")
     @classmethod
     def reject_blank_optional_text(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
@@ -104,10 +118,45 @@ class AgentLoopStopResponse(BaseModel):
     stop_requested: bool
 
 
+class AgentLoopApprovalRequest(BaseModel):
+    approval_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    iteration: int = Field(ge=1)
+    tool: str = Field(min_length=1)
+    arguments: dict[str, Any]
+    status: AgentLoopApprovalStatus
+    reason: str | None = None
+
+
+class AgentLoopApprovalResponseRequest(BaseModel):
+    approved: bool
+    reason: str | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def reject_blank_reason(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("must not be empty")
+        return value
+
+
+class AgentLoopApprovalResumeResult(BaseModel):
+    approval_id: str
+    session_id: str
+    status: AgentLoopApprovalStatus
+    tool: str
+    executed: bool
+    already_resumed: bool = False
+    tool_result: AgentLoopToolResult | None = None
+    reason: str | None = None
+
+
 class AgentLoopRunSummary(BaseModel):
     session_id: str
     status: AgentLoopStatus
     user_request: str | None = None
+    workspace_id: str | None = None
+    workspace_root_path: str | None = None
     provider_id: str | None = None
     model: str | None = None
     iterations_used: int = Field(default=0, ge=0)

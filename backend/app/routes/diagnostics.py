@@ -4,6 +4,8 @@ from fastapi import APIRouter
 
 from app.services.cognitive_state_service import cognitive_state_service
 from app.services.diagnostics_service import diagnostics_service
+from app.services.memory_reconstruction_service import memory_reconstruction_service
+from app.services.skill_registry_service import skill_registry_service
 
 router = APIRouter()
 
@@ -51,3 +53,13 @@ def governance_diagnostics() -> dict[str, Any]:
 @router.get("/diagnostics/summary")
 def diagnostics_summary() -> dict[str, Any]:
     return diagnostics_service.runtime_summary()
+
+
+@router.get("/diagnostics/skills")
+def skill_registry_diagnostics() -> dict[str, Any]:
+    return skill_registry_service.diagnostics().model_dump(mode="json")
+
+
+@router.get("/diagnostics/memory")
+def memory_diagnostics() -> dict[str, Any]:
+    return memory_reconstruction_service.diagnostics().model_dump(mode="json")

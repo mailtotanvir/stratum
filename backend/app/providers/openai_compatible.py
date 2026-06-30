@@ -71,13 +71,17 @@ class OpenAICompatibleProviderAdapter(ProviderAdapter):
         )
         response_body = _decode_response(response)
         result = self._response_parser.parse(response_body, request)
-
-        metadata = dict(result.metadata)
-        metadata["transport"] = dict(response.metadata)
-
         return result.model_copy(
             update={
-                "metadata": metadata,
+                "metadata": {
+                    "provider": request.provider,
+                    "provider_id": request.provider_id,
+                    "model": result.model,
+                    "status": result.status.value,
+                    "content": result.content,
+                    "transport": dict(response.metadata),
+                    **result.metadata,
+                },
             },
             deep=True,
         )

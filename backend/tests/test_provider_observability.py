@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.runtime_event import EventType, RuntimeEvent, Severity
+from app.routes import provider_observability as provider_observability_route
 from app.services.event_service import EventService
 from app.services.provider_observability_service import (
     ProviderObservabilityGenerationError,
@@ -289,40 +290,171 @@ def seed_provider_route_events() -> None:
     )
 
 
+def seed_provider_execution_events() -> None:
+    from app.services.event_service import event_service
+
+    event_service.emit_event_sync(
+        EventType.AGENT_LOOP_PROVIDER_COMPLETED,
+        "Agent loop provider completed",
+        metadata={
+            "session_id": "loop-1",
+            "iteration": 1,
+            "status": "completed",
+            "provider_id": "openai",
+            "model": "gpt-4.1",
+            "effective_provider_id": "openai",
+            "effective_model": "gpt-4.1",
+            "routing_reason": "explicit_request",
+            "routing_source": "explicit_request",
+            "budget_policy": {
+                "classification": "balanced",
+                "warnings": ["budget warning"],
+                "metadata": {},
+            },
+        },
+    )
+    event_service.emit_event_sync(
+        EventType.AGENT_LOOP_PROVIDER_COMPLETED,
+        "Agent loop provider completed",
+        metadata={
+            "session_id": "loop-2",
+            "iteration": 1,
+            "status": "failed",
+            "provider_id": "anthropic",
+            "model": "claude-3.5",
+            "effective_provider_id": "anthropic",
+            "effective_model": "claude-3.5",
+            "routing_reason": "fallback",
+            "routing_source": "policy",
+            "budget_policy": {
+                "classification": "premium",
+                "warnings": [],
+                "metadata": {},
+            },
+        },
+    )
+    event_service.emit_event_sync(
+        EventType.PROVIDER_EXECUTION_FAILED,
+        "Provider execution failed",
+        severity=Severity.ERROR,
+        metadata={
+            "provider_id": "openai",
+            "model": "gpt-4.1",
+            "status": "failed",
+            "routing_reason": "explicit_request",
+            "routing_source": "explicit_request",
+        },
+    )
+
+
+def test_provider_execution_summary_counts_agent_loop_events(tmp_path) -> None:
+    seed_provider_execution_events()
+    service = provider_observability_route.provider_observability_service
+
+    summary = service.execution_summary()
+
+    assert summary.total_executions == 2
+    assert summary.completed == 1
+    assert summary.failed == 1
+    assert summary.by_provider == {"anthropic": 1, "openai": 1}
+    assert summary.by_model == {"claude-3.5": 1, "gpt-4.1": 1}
+    assert summary.budget_warnings_count == 1
+
+
+def test_provider_execution_recent_returns_newest_first(tmp_path) -> None:
+    seed_provider_execution_events()
+    service = provider_observability_route.provider_observability_service
+
+    recent = service.recent_executions()
+
+    assert [item.provider_id for item in recent[:2]] == [
+        "anthropic",
+        "openai",
+    ]
+    assert recent[0].status == "failed"
+    assert recent[0].routing_source == "policy"
+    assert recent[0].routing_reason == "fallback"
+    assert recent[0].budget_policy is None or "warnings" in recent[0].budget_policy
+    assert recent[0].timestamp is not None
+
+
+def test_provider_execution_endpoints_do_not_call_providers(monkeypatch) -> None:
+    class NoProviderCallsService:
+        def __init__(self) -> None:
+            self.called = False
+
+        def execution_summary(self):
+            self.called = True
+            return provider_observability_route.ProviderExecutionSummary(
+                total_executions=0,
+                completed=0,
+                failed=0,
+                by_provider={},
+                by_model={},
+                budget_warnings_count=0,
+            )
+
+        def recent_executions(self):
+            self.called = True
+            return []
+
+    stub = NoProviderCallsService()
+    monkeypatch.setattr(
+        provider_observability_route,
+        "provider_observability_service",
+        stub,
+    )
+
+    assert provider_observability_route.get_provider_execution_summary() == (
+        provider_observability_route.ProviderExecutionSummary(
+            total_executions=0,
+            completed=0,
+            failed=0,
+            by_provider={},
+            by_model={},
+            budget_warnings_count=0,
+        )
+    )
+    assert provider_observability_route.get_provider_execution_recent() == []
+    assert stub.called is True
+
+
 def test_full_provider_observability_endpoint() -> None:
     seed_provider_route_events()
-
-    response = TestClient(app).get("/runtime/providers/observability")
-
-    assert response.status_code == 200
-    assert response.json()["provider_reports"][0]["provider_name"] == "openai"
+    report = provider_observability_route.get_provider_observability()
+    assert report.provider_reports[0].provider_name == "openai"
 
 
 def test_provider_detail_endpoint() -> None:
     seed_provider_route_events()
-
-    response = TestClient(app).get(
-        "/runtime/providers/observability/openai"
+    report = provider_observability_route.get_provider_observability_detail(
+        "openai"
     )
-
-    assert response.status_code == 200
-    assert response.json()["provider_count"] == 1
-    assert response.json()["provider_reports"][0]["model_name"] == "gpt-route"
+    assert report.provider_count == 1
+    assert report.provider_reports[0].model_name == "gpt-route"
 
 
 def test_model_usage_endpoint() -> None:
     seed_provider_route_events()
-
-    response = TestClient(app).get("/runtime/providers/models")
-
-    assert response.status_code == 200
-    assert response.json()[0]["model_name"] == "gpt-route"
+    models = provider_observability_route.get_provider_model_usage()
+    assert models[0].model_name == "gpt-route"
 
 
 def test_cost_summary_endpoint() -> None:
     seed_provider_route_events()
+    costs = provider_observability_route.get_provider_costs()
+    assert costs[0].estimated_cost_usd == 0.01
 
-    response = TestClient(app).get("/runtime/providers/costs")
 
-    assert response.status_code == 200
-    assert response.json()[0]["estimated_cost_usd"] == 0.01
+def test_provider_execution_summary_endpoint() -> None:
+    seed_provider_execution_events()
+    body = provider_observability_route.get_provider_execution_summary()
+    assert body.total_executions == 2
+    assert body.by_provider == {"anthropic": 1, "openai": 1}
+
+
+def test_provider_execution_recent_endpoint() -> None:
+    seed_provider_execution_events()
+    body = provider_observability_route.get_provider_execution_recent()
+    assert body[0].provider_id == "anthropic"
+    assert body[0].status == "failed"

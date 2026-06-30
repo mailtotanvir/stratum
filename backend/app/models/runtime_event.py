@@ -207,6 +207,15 @@ class EventType(StrEnum):
     AGENT_LOOP_PROVIDER_COMPLETED = "agent_loop_provider_completed"
     AGENT_LOOP_TOOL_SELECTED = "agent_loop_tool_selected"
     AGENT_LOOP_TOOL_COMPLETED = "agent_loop_tool_completed"
+    AGENT_LOOP_APPROVAL_REQUESTED = "agent_loop_approval_requested"
+    AGENT_LOOP_APPROVAL_RESPONDED = "agent_loop_approval_responded"
+    AGENT_LOOP_APPROVAL_RESUMED = "agent_loop_approval_resumed"
+    AGENT_LOOP_APPROVAL_RESUME_REJECTED = (
+        "agent_loop_approval_resume_rejected"
+    )
+    AGENT_LOOP_APPROVAL_CONTINUE_STARTED = (
+        "agent_loop_approval_continue_started"
+    )
     AGENT_LOOP_COMPLETED = "agent_loop_completed"
     AGENT_LOOP_FAILED = "agent_loop_failed"
     AGENT_LOOP_STOP_REQUESTED = "agent_loop_stop_requested"

@@ -181,10 +181,13 @@ def test_default_registry_contracts_cover_v0_6_surfaces() -> None:
         "policy_evidence",
         "policy_summary",
         "recommendation_outcome",
+        "repository_memory",
         "runtime_intelligence",
         "runtime_reconstruction_view",
         "session_agent_execution_projection",
         "session_decision_projection",
+        "session_memory",
+        "working_memory",
     ]
 
 
@@ -193,7 +196,7 @@ def test_projection_registry_list_route() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["registered_projections_total"] == 24
+    assert body["registered_projections_total"] == 27
     assert [item["projection_name"] for item in body["projections"]] == [
         "artifact_lineage_projection",
         "decision_effectiveness",
@@ -215,12 +218,15 @@ def test_projection_registry_list_route() -> None:
         "policy_evidence",
         "policy_summary",
         "recommendation_outcome",
+        "repository_memory",
         "runtime_intelligence",
         "runtime_reconstruction_view",
         "session_agent_execution_projection",
         "session_decision_projection",
+        "session_memory",
+        "working_memory",
     ]
-    assert body["observability_metrics"]["registered_projections_total"] == 24
+    assert body["observability_metrics"]["registered_projections_total"] == 27
 
 
 def test_projection_registry_detail_route() -> None:

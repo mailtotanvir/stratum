@@ -102,3 +102,6 @@ def test_system_prompt_contains_tool_schemas() -> None:
     assert '"name": "final_answer"' in system_prompt
     assert '"answer": {"type": "string"}' in system_prompt
     assert '"required": ["answer"]' in system_prompt
+    assert '"name": "read_file"' in system_prompt
+    assert '"name": "list_directory"' in system_prompt
+    assert '"path": {"type": "string"}' in system_prompt

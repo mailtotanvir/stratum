@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel
@@ -15,8 +16,8 @@ class RuntimeSession(BaseModel):
     id: str
     task_id: str
     status: RuntimeSessionStatus
-    created_at: str
-    completed_at: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
 
     def to_dict(self) -> dict[str, object]:
         return self.model_dump(mode="json")

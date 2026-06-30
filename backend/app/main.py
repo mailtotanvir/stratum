@@ -6,6 +6,10 @@ from app.routes.agent_execution import router as agent_execution_router
 from app.routes.agent_execution_diagnostics import (
     router as agent_execution_diagnostics_router,
 )
+from app.routes.agent_invocation import router as agent_invocation_router
+from app.routes.agent_adapter_catalog import (
+    router as agent_adapter_catalog_router,
+)
 from app.routes.artifact import router as artifact_router
 from app.routes.artifact_lineage import router as artifact_lineage_router
 from app.routes.diagnostics import router as diagnostics_router
@@ -79,6 +83,7 @@ from app.routes.query_manifest import router as query_manifest_router
 from app.routes.recommendation_outcome_projections import (
     router as recommendation_outcome_projections_router,
 )
+from app.routes.memory import router as memory_router
 from app.routes.reconstruct import router as reconstruct_router
 from app.routes.reflection import router as reflection_router
 from app.routes.runtime import router as runtime_router
@@ -91,6 +96,7 @@ from app.routes.runtime_reconstruction import (
 from app.routes.session_agent_execution_projection import (
     router as session_agent_execution_projection_router,
 )
+from app.routes.skills import router as skills_router
 from app.routes.stream import router as stream_router
 from app.routes.stop import router as stop_router
 from app.routes.task import router as task_router
@@ -101,6 +107,8 @@ app = FastAPI(title="Stratum Backend")
 app.include_router(agent_loop_router)
 app.include_router(agent_execution_router)
 app.include_router(agent_execution_diagnostics_router)
+app.include_router(agent_invocation_router)
+app.include_router(agent_adapter_catalog_router)
 app.include_router(artifact_router)
 app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
@@ -142,11 +150,13 @@ app.include_router(query_executor_diagnostics_router)
 app.include_router(query_health_router)
 app.include_router(query_manifest_router)
 app.include_router(recommendation_outcome_projections_router)
+app.include_router(memory_router)
 app.include_router(reflection_router)
 app.include_router(runtime_router)
 app.include_router(runtime_intelligence_router)
 app.include_router(runtime_reconstruction_router)
 app.include_router(session_agent_execution_projection_router)
+app.include_router(skills_router)
 app.include_router(stream_router)
 app.include_router(stop_router)
 app.include_router(task_router)

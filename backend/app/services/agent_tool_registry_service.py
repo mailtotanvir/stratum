@@ -1,4 +1,5 @@
-from collections.abc import Callable
+from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 from app.models.agent_loop import (
@@ -6,56 +7,56 @@ from app.models.agent_loop import (
     AgentLoopToolDefinition,
     AgentLoopToolResult,
 )
-
-
-AgentTool = Callable[[dict[str, Any]], AgentLoopToolResult]
+from app.services.runtime_workspace_service import RuntimeWorkspaceService
+from app.tools.agent_runtime_tools import (
+    DEFAULT_MAX_FILE_SIZE,
+    AgentRuntimeTool,
+    FinalAnswerTool,
+    GitCheckpointTool,
+    GitCreateBranchTool,
+    GitStatusTool,
+    ListDirectoryTool,
+    ObserveTool,
+    ProposeChangeTool,
+    ReadFileTool,
+    RunShellTool,
+    WriteFileTool,
+)
 
 
 class AgentToolRegistryService:
-    def __init__(self) -> None:
-        self._definitions = {
-            "observe": AgentLoopToolDefinition(
-                name="observe",
-                description="Record an observation and continue the agent loop.",
-                argument_schema={
-                    "type": "object",
-                    "properties": {
-                        "message": {"type": "string"},
-                    },
-                    "required": ["message"],
-                    "additionalProperties": False,
-                },
-            ),
-            "final_answer": AgentLoopToolDefinition(
-                name="final_answer",
-                description="Return the final answer and complete the agent loop.",
-                argument_schema={
-                    "type": "object",
-                    "properties": {
-                        "answer": {"type": "string"},
-                    },
-                    "required": ["answer"],
-                    "additionalProperties": False,
-                },
-                completion_tool=True,
-            ),
-        }
-        self._tools: dict[str, AgentTool] = {
-            "observe": self._observe,
-            "final_answer": self._final_answer,
-        }
+    def __init__(
+        self,
+        workspace_root: str | Path | None = None,
+        workspace: RuntimeWorkspaceService | None = None,
+        max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+        shell_timeout_seconds: float = 30,
+        tools: Iterable[AgentRuntimeTool] | None = None,
+    ) -> None:
+        boundary = workspace or RuntimeWorkspaceService(workspace_root)
+        built_ins = [
+            ObserveTool(),
+            FinalAnswerTool(),
+            GitCheckpointTool(boundary),
+            GitCreateBranchTool(boundary),
+            GitStatusTool(boundary),
+            ProposeChangeTool(),
+            ReadFileTool(boundary, max_file_size),
+            ListDirectoryTool(boundary),
+            RunShellTool(boundary, shell_timeout_seconds),
+            WriteFileTool(boundary),
+        ]
+        selected_tools = built_ins if tools is None else list(tools)
+        self._tools = {tool.name: tool for tool in selected_tools}
 
     def list_tools(self) -> list[AgentLoopToolDefinition]:
         return [
-            self._definitions[name]
-            for name in sorted(self._definitions)
+            self._tools[name].definition
+            for name in sorted(self._tools)
         ]
 
     def get_tool(self, name: str) -> AgentLoopToolDefinition:
-        try:
-            return self._definitions[name]
-        except KeyError as exc:
-            raise ValueError(f"Unknown agent loop tool: {name}") from exc
+        return self._get_runtime_tool(name).definition
 
     def tool_names(self) -> list[str]:
         return [tool.name for tool in self.list_tools()]
@@ -73,62 +74,18 @@ class AgentToolRegistryService:
                 arguments=arguments or {},
             )
         )
+        return self._get_runtime_tool(call.tool).execute(call.arguments)
+
+    def validate(self, tool_call: AgentLoopToolCall) -> None:
+        self._get_runtime_tool(tool_call.tool).validate(
+            tool_call.arguments
+        )
+
+    def _get_runtime_tool(self, name: str) -> AgentRuntimeTool:
         try:
-            tool = self._tools[call.tool]
+            return self._tools[name]
         except KeyError as exc:
-            raise ValueError(f"Unknown agent loop tool: {call.tool}") from exc
-        return tool(call.arguments)
-
-    @staticmethod
-    def _observe(arguments: dict[str, Any]) -> AgentLoopToolResult:
-        _reject_unexpected_arguments(arguments, {"message"}, "observe")
-        message = _required_string(arguments, "message", "observe")
-        return AgentLoopToolResult(
-            tool="observe",
-            output=message,
-        )
-
-    @staticmethod
-    def _final_answer(arguments: dict[str, Any]) -> AgentLoopToolResult:
-        _reject_unexpected_arguments(
-            arguments,
-            {"answer"},
-            "final_answer",
-        )
-        answer = _required_string(arguments, "answer", "final_answer")
-        return AgentLoopToolResult(
-            tool="final_answer",
-            output=answer,
-            completion_intent=True,
-        )
-
-
-def _required_string(
-    arguments: dict[str, Any],
-    name: str,
-    tool: str,
-) -> str:
-    value = arguments.get(name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(
-            f"Agent loop tool '{tool}' requires non-empty string "
-            f"argument '{name}'"
-        )
-    return value
+            raise ValueError(f"Unknown agent loop tool: {name}") from exc
 
 
 agent_tool_registry_service = AgentToolRegistryService()
-
-
-def _reject_unexpected_arguments(
-    arguments: dict[str, Any],
-    expected: set[str],
-    tool: str,
-) -> None:
-    unexpected = sorted(set(arguments) - expected)
-    if unexpected:
-        names = ", ".join(unexpected)
-        raise ValueError(
-            f"Agent loop tool '{tool}' received unexpected "
-            f"argument(s): {names}"
-        )

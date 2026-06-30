@@ -64,6 +64,11 @@ from app.services.session_agent_execution_projection_builder_service import (
 from app.services.session_decision_projection_builder_service import (
     session_decision_projection_builder_service,
 )
+from app.services.memory_projection_builder_service import (
+    repository_memory_projection_builder_service,
+    session_memory_projection_builder_service,
+    working_memory_projection_builder_service,
+)
 
 
 class ProjectionTypeAlreadyRegisteredError(ValueError):
@@ -136,3 +141,6 @@ projection_registry.register(
     session_agent_execution_projection_builder_service
 )
 projection_registry.register(session_decision_projection_builder_service)
+projection_registry.register(working_memory_projection_builder_service)
+projection_registry.register(session_memory_projection_builder_service)
+projection_registry.register(repository_memory_projection_builder_service)

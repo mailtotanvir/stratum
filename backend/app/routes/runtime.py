@@ -1,6 +1,8 @@
 import json
+from datetime import datetime
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.db.schema import (
@@ -29,6 +31,11 @@ from app.models.planner import (
     RecommendationSelectionPreview,
 )
 from app.models.planning_context import PlanningContext
+from app.models.runtime_workspace import (
+    RuntimeWorkspace,
+    RuntimeWorkspaceSummary,
+)
+from app.models.runtime_workspace_binding import RuntimeWorkspaceBindingStatus
 from app.models.projection import (
     ProjectionRegistryCatalog,
     ProjectionRegistryDetail,
@@ -57,6 +64,7 @@ from app.models.projection_replay import (
 from app.models.proposal import Proposal
 from app.models.proposal import ProposalSourceType
 from app.models.runtime_artifact import RuntimeArtifactAttachment, RuntimeTaskArtifact
+from app.models.runtime_workspace_artifact import RuntimeWorkspaceArtifact
 from app.models.runtime_execution import RuntimeExecution
 from app.models.runtime_event import EventType
 from app.models.runtime_session import RuntimeSession
@@ -121,6 +129,10 @@ from app.services.projection_lineage_service import (
 from app.services.projection_lifecycle_service import (
     projection_lifecycle_service,
 )
+from app.services.provider_capability_registry_service import (
+    provider_capability_registry_service,
+)
+from app.services.provider_health_service import provider_health_service
 from app.services.projection_drift_service import (
     ProjectionDriftCheckError,
     projection_drift_service,
@@ -133,9 +145,22 @@ from app.services.runtime_artifact_service import (
     RuntimeArtifactSessionMismatchError,
     runtime_artifact_service,
 )
+from app.services.runtime_workspace_artifact_service import (
+    runtime_workspace_artifact_service,
+)
+from app.services.runtime_workspace_binding_service import (
+    runtime_workspace_binding_service,
+)
 from app.services.runtime_execution_service import (
     RuntimeExecutionNotFoundError,
     runtime_execution_service,
+)
+from app.services.runtime_reconstruction_service import (
+    runtime_reconstruction_service,
+)
+from app.services.runtime_workspace_service import (
+    RuntimeWorkspaceService,
+    runtime_workspace_service,
 )
 from app.services.runtime_session_service import (
     RuntimeSessionNotFoundError,
@@ -148,6 +173,12 @@ from app.services.tool_execution_service import ToolDisabledError
 from app.services.tool_registry_service import ToolNotFoundError, tool_registry_service
 
 router = APIRouter()
+
+BACKEND_VERSION = "0.1.0"
+
+
+def get_runtime_workspace_service() -> RuntimeWorkspaceService:
+    return runtime_workspace_service
 
 
 class RuntimeReasonRequest(BaseModel):
@@ -172,6 +203,63 @@ class RuntimeProjectionTypeDetail(BaseModel):
     builder_name: str
     reconstruction: ProjectionReconstructionInfo
     source: str
+
+
+class RuntimeSessionOverview(BaseModel):
+    session_id: str
+    status: str
+    user_request: str | None = None
+    workspace_id: str | None = None
+    workspace_root_path: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    current_iteration: int | None = None
+    max_iterations: int | None = None
+    pending_approval: bool
+    pending_approval_id: str | None = None
+    last_tool: str | None = None
+    final_answer: str | None = None
+    error: str | None = None
+    started_at: datetime
+    updated_at: datetime
+
+
+class RuntimeDashboardOverview(BaseModel):
+    active_sessions: int
+    pending_approvals: int
+    completed_today: int
+    failed_today: int
+    stopped_today: int
+    latest_sessions: list[RuntimeSessionOverview]
+
+
+class RuntimeTimelineItem(BaseModel):
+    timestamp: datetime
+    event_type: str
+    title: str
+    summary: str
+    severity: str
+    payload: dict[str, Any]
+
+
+class RuntimeStatusOverview(BaseModel):
+    backend_version: str
+    provider_status: str
+    runtime_status: str
+    registered_tools: list[str]
+    registered_providers: list[str]
+    event_count: int
+    active_sessions: int
+
+
+class RuntimeWorkspaceCreateRequest(BaseModel):
+    name: str
+    root_path: str
+
+
+@router.get("/runtime/workspaces/binding", summary="Get active workspace binding status")
+def get_runtime_workspace_binding() -> RuntimeWorkspaceBindingStatus:
+    return runtime_workspace_binding_service.get_binding_status()
 
 
 def to_runtime_execution(record: RuntimeExecutionRecord) -> RuntimeExecution:
@@ -208,6 +296,226 @@ def to_runtime_session(record) -> RuntimeSession:
             if record.completed_at is not None
             else None
         ),
+    )
+
+
+@router.get("/runtime/workspaces", summary="List runtime workspaces")
+def list_runtime_workspaces(
+    service: RuntimeWorkspaceService = Depends(get_runtime_workspace_service),
+) -> list[RuntimeWorkspaceSummary]:
+    return service.list_workspaces()
+
+
+@router.get(
+    "/runtime/workspaces/active",
+    summary="Get active runtime workspace",
+)
+def get_active_runtime_workspace(
+    service: RuntimeWorkspaceService = Depends(get_runtime_workspace_service),
+) -> RuntimeWorkspace:
+    return service.get_active_workspace()
+
+
+@router.post("/runtime/workspaces", summary="Register runtime workspace")
+def register_runtime_workspace(
+    request: RuntimeWorkspaceCreateRequest,
+    service: RuntimeWorkspaceService = Depends(get_runtime_workspace_service),
+) -> RuntimeWorkspace:
+    return service.register_workspace(request.name, request.root_path)
+
+
+@router.post(
+    "/runtime/workspaces/{workspace_id}/activate",
+    summary="Activate runtime workspace",
+)
+def activate_runtime_workspace(
+    workspace_id: str,
+    service: RuntimeWorkspaceService = Depends(get_runtime_workspace_service),
+) -> RuntimeWorkspace:
+    return service.set_active_workspace(workspace_id)
+
+
+def _parse_iso_datetime(value: datetime | str | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value)
+
+
+def _naive(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=None)
+
+
+def _session_events(session_id: str) -> list[Any]:
+    session = runtime_session_service.get_session(session_id)
+    started_at = _naive(_parse_iso_datetime(session.created_at))
+    completed_at = _naive(_parse_iso_datetime(session.completed_at))
+    events = []
+    for event in event_service.list_persisted_events():
+        metadata = event.metadata
+        explicit_session_id = metadata.get("session_id") or metadata.get(
+            "runtime_session_id"
+        )
+        if explicit_session_id is not None:
+            if explicit_session_id != session_id:
+                continue
+        elif metadata.get("task_id") != session.task_id:
+            continue
+        occurred_at = _naive(datetime.fromisoformat(event.ts))
+        if started_at is not None and occurred_at < started_at:
+            continue
+        if completed_at is not None and occurred_at > completed_at:
+            continue
+        events.append(event)
+    return sorted(events, key=lambda item: (item.ts, item.id, item.type.value))
+
+
+def _session_state(session_id: str) -> dict[str, Any]:
+    state: dict[str, Any] = {
+        "user_request": None,
+        "workspace_id": None,
+        "workspace_root_path": None,
+        "provider": None,
+        "model": None,
+        "current_iteration": None,
+        "max_iterations": None,
+        "pending_approval": False,
+        "pending_approval_id": None,
+        "last_tool": None,
+        "final_answer": None,
+        "error": None,
+    }
+    for event in _session_events(session_id):
+        metadata = event.metadata
+        if event.type == EventType.AGENT_LOOP_STARTED:
+            state["user_request"] = metadata.get("user_request")
+            state["workspace_id"] = metadata.get("workspace_id")
+            state["workspace_root_path"] = metadata.get(
+                "workspace_root_path"
+            )
+            state["provider"] = metadata.get("provider_id")
+            state["model"] = metadata.get("model")
+            state["max_iterations"] = metadata.get("max_iterations")
+        if isinstance(metadata.get("iteration"), int):
+            state["current_iteration"] = metadata["iteration"]
+        if isinstance(metadata.get("tool"), str):
+            state["last_tool"] = metadata["tool"]
+        if event.type == EventType.AGENT_LOOP_APPROVAL_REQUESTED:
+            state["pending_approval"] = True
+            state["pending_approval_id"] = metadata.get("approval_id")
+        elif event.type == EventType.AGENT_LOOP_APPROVAL_RESPONDED:
+            state["pending_approval"] = False
+        elif event.type == EventType.AGENT_LOOP_COMPLETED:
+            state["final_answer"] = metadata.get("final_answer")
+            state["pending_approval"] = False
+            state["pending_approval_id"] = None
+        elif event.type in {
+            EventType.AGENT_LOOP_FAILED,
+            EventType.AGENT_LOOP_STOPPED,
+        }:
+            state["error"] = metadata.get("error") or event.message
+            state["pending_approval"] = False
+            state["pending_approval_id"] = None
+    return state
+
+
+def _session_overview(session_id: str) -> RuntimeSessionOverview:
+    session = runtime_session_service.get_session(session_id)
+    state = _session_state(session_id)
+    return RuntimeSessionOverview(
+        session_id=session.id,
+        status=session.status,
+        user_request=state["user_request"],
+        workspace_id=state["workspace_id"],
+        workspace_root_path=state["workspace_root_path"],
+        provider=state["provider"],
+        model=state["model"],
+        current_iteration=state["current_iteration"],
+        max_iterations=state["max_iterations"],
+        pending_approval=bool(state["pending_approval"]),
+        pending_approval_id=state["pending_approval_id"],
+        last_tool=state["last_tool"],
+        final_answer=state["final_answer"],
+        error=state["error"],
+        started_at=session.created_at,
+        updated_at=session.completed_at or session.created_at,
+    )
+
+
+def _timeline_item(event) -> RuntimeTimelineItem:
+    title_map = {
+        EventType.AGENT_LOOP_STARTED: "Agent loop started",
+        EventType.AGENT_LOOP_PROVIDER_REQUESTED: "Provider requested",
+        EventType.AGENT_LOOP_PROVIDER_COMPLETED: "Provider completed",
+        EventType.AGENT_LOOP_TOOL_SELECTED: "Tool selected",
+        EventType.AGENT_LOOP_TOOL_COMPLETED: "Tool completed",
+        EventType.AGENT_LOOP_APPROVAL_REQUESTED: "Approval requested",
+        EventType.AGENT_LOOP_APPROVAL_RESPONDED: "Approval responded",
+        EventType.AGENT_LOOP_APPROVAL_RESUMED: "Approval resumed",
+        EventType.AGENT_LOOP_APPROVAL_CONTINUE_STARTED: "Approval continue started",
+        EventType.AGENT_LOOP_COMPLETED: "Agent loop completed",
+        EventType.AGENT_LOOP_FAILED: "Agent loop failed",
+        EventType.AGENT_LOOP_STOPPED: "Agent loop stopped",
+        EventType.RUNTIME_SESSION_RUNNING: "Session running",
+        EventType.RUNTIME_SESSION_COMPLETED: "Session completed",
+        EventType.RUNTIME_SESSION_INTERRUPTED: "Session interrupted",
+        EventType.RUNTIME_SESSION_STOPPED: "Session stopped",
+    }
+    payload = {
+        key: value
+        for key, value in event.metadata.items()
+        if key not in {"internal", "provider_response", "raw_output"}
+    }
+    return RuntimeTimelineItem(
+        timestamp=event.ts,
+        event_type=event.type.value,
+        title=title_map.get(
+            event.type, event.type.value.replace("_", " ").title()
+        ),
+        summary=event.message,
+        severity=event.severity.value,
+        payload=payload,
+    )
+
+
+def _dashboard_overview() -> RuntimeDashboardOverview:
+    sessions = runtime_session_service.list_sessions()
+    today = datetime.now().date()
+    active_sessions = sum(
+        session.status in {"created", "running"} for session in sessions
+    )
+    completed_today = sum(
+        session.status == "completed"
+        and (completed := _parse_iso_datetime(session.completed_at)) is not None
+        and completed.date() == today
+        for session in sessions
+    )
+    failed_today = sum(
+        session.status == "interrupted"
+        and (completed := _parse_iso_datetime(session.completed_at)) is not None
+        and completed.date() == today
+        for session in sessions
+    )
+    stopped_today = sum(
+        session.status == "stopped"
+        and (completed := _parse_iso_datetime(session.completed_at)) is not None
+        and completed.date() == today
+        for session in sessions
+    )
+    latest_sessions = [_session_overview(session.id) for session in sessions[:25]]
+    pending_approvals = sum(
+        1 for session in sessions if _session_state(session.id)["pending_approval"]
+    )
+    return RuntimeDashboardOverview(
+        active_sessions=active_sessions,
+        pending_approvals=pending_approvals,
+        completed_today=completed_today,
+        failed_today=failed_today,
+        stopped_today=stopped_today,
+        latest_sessions=latest_sessions,
     )
 
 
@@ -594,6 +902,51 @@ def get_runtime_session(session_id: str) -> RuntimeSession:
         return to_runtime_session(runtime_session_service.get_session(session_id))
     except RuntimeSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/runtime/session/{session_id}")
+def get_runtime_session_overview(session_id: str) -> RuntimeSessionOverview:
+    try:
+        return _session_overview(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/runtime/session/{session_id}/summary")
+def get_runtime_session_summary(session_id: str) -> RuntimeSessionOverview:
+    try:
+        return _session_overview(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/runtime/dashboard")
+def get_runtime_dashboard() -> RuntimeDashboardOverview:
+    return _dashboard_overview()
+
+
+@router.get("/runtime/session/{session_id}/timeline")
+def get_runtime_session_timeline(session_id: str) -> list[RuntimeTimelineItem]:
+    try:
+        return [_timeline_item(event) for event in _session_events(session_id)]
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/runtime/status")
+def get_runtime_status() -> RuntimeStatusOverview:
+    sessions = runtime_session_service.list_sessions()
+    return RuntimeStatusOverview(
+        backend_version=BACKEND_VERSION,
+        provider_status=provider_health_service.health().status,
+        runtime_status="healthy",
+        registered_tools=[tool.name for tool in tool_registry_service.list_tools()],
+        registered_providers=provider_capability_registry_service.list_providers(),
+        event_count=len(event_service.list_persisted_events()),
+        active_sessions=sum(
+            session.status in {"created", "running"} for session in sessions
+        ),
+    )
 
 
 @router.get("/runtime/sessions/{session_id}/planning-context")
@@ -1069,6 +1422,26 @@ def list_runtime_task_artifacts(
             session_id=session_id,
         )
     ]
+
+
+@router.get("/runtime/workspaces/{workspace_id}/artifacts")
+def list_runtime_workspace_artifacts(
+    workspace_id: str,
+    service: RuntimeWorkspaceService = Depends(get_runtime_workspace_service),
+) -> list[RuntimeWorkspaceArtifact]:
+    return runtime_workspace_artifact_service.__class__(
+        service
+    ).list_workspace_artifacts(workspace_id)
+
+
+@router.get("/runtime/sessions/{session_id}/artifacts")
+def list_runtime_session_artifacts(
+    session_id: str,
+    service: RuntimeWorkspaceService = Depends(get_runtime_workspace_service),
+) -> list[RuntimeWorkspaceArtifact]:
+    return runtime_workspace_artifact_service.__class__(
+        service
+    ).list_session_artifacts(session_id)
 
 
 @router.post("/runtime/tasks/{task_id}/interrupt")
