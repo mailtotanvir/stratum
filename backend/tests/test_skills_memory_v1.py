@@ -38,46 +38,58 @@ def test_skill_manifest_validation() -> None:
 
 
 def test_skill_registry_is_sorted_and_declarative(tmp_path) -> None:
-    loader = SkillLoaderService(tmp_path / "missing-skills")
+    skill_root = tmp_path / "skills"
+    (skill_root / "alpha").mkdir(parents=True)
+    (skill_root / "beta").mkdir(parents=True)
+    (skill_root / "alpha" / "skill.json").write_text(
+        """
+        {
+          "manifest": {
+            "skill_id": "skill-b",
+            "name": "B",
+            "version": 1,
+            "description": "b",
+            "methodology": "deterministic",
+            "category": "beta",
+            "steps": [],
+            "dependencies": [],
+            "parameters": {},
+            "metadata": {}
+          },
+          "source": "alpha/skill.json"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    (skill_root / "beta" / "skill.json").write_text(
+        """
+        {
+          "manifest": {
+            "skill_id": "skill-a",
+            "name": "A",
+            "version": 1,
+            "description": "a",
+            "methodology": "deterministic",
+            "category": "alpha",
+            "steps": [],
+            "dependencies": [],
+            "parameters": {},
+            "metadata": {}
+          },
+          "source": "beta/skill.json"
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+    loader = SkillLoaderService(skill_root)
     registry = SkillRegistryService(loader=loader)
-    registry.register(
-        {
-            "manifest": {
-                "skill_id": "skill-b",
-                "name": "B",
-                "version": 1,
-                "description": "b",
-                "methodology": "deterministic",
-                "category": "beta",
-                "steps": [],
-                "tags": [],
-                "metadata": {},
-            },
-            "source": "tests/b.json",
-        }
-    )
-    registry.register(
-        {
-            "manifest": {
-                "skill_id": "skill-a",
-                "name": "A",
-                "version": 1,
-                "description": "a",
-                "methodology": "deterministic",
-                "category": "alpha",
-                "steps": [],
-                "tags": [],
-                "metadata": {},
-            },
-            "source": "tests/a.json",
-        }
-    )
 
     assert [item.skill_id for item in registry.list_registry().skills] == [
         "skill-a",
         "skill-b",
     ]
     assert registry.diagnostics().status == "healthy"
+    assert registry.diagnostics_for("skill-a").status == "degraded"
 
 
 def make_services(tmp_path: Path):
@@ -163,10 +175,12 @@ def test_memory_routes_and_diagnostics(tmp_path, monkeypatch) -> None:
     diagnostics = diagnostics_routes.memory_diagnostics()
     skills = skills_routes.list_skills()
     skill_diagnostics = diagnostics_routes.skill_registry_diagnostics()
+    memory_diag = memory_routes.get_memory_diagnostics()
 
     assert working.session_id == session_id
     assert session.session_id == session_id
     assert repository.source_summary.session_count == 1
     assert diagnostics["status"] == "healthy"
-    assert skills.registered_skills_total == 0
+    assert skills.registered_skills_total >= 4
     assert skill_diagnostics["status"] == "healthy"
+    assert memory_diag.status == "healthy"

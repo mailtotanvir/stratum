@@ -1,0 +1,15 @@
+{
+  "extension_id": "sample-memory-provider",
+  "name": "Sample Memory Provider",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "kind": "memory-provider",
+  "capabilities": ["memory-read"],
+  "runtime_compatibility": { "runtime": ">=1", "sdk": ">=1" },
+  "dependencies": [],
+  "permissions": ["read-artifacts"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "sample_memory:SampleMemoryProvider",
+  "enabled": true,
+  "metadata": { "demo_only": true }
+}

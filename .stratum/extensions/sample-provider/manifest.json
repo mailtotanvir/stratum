@@ -1,0 +1,15 @@
+{
+  "extension_id": "sample-provider",
+  "name": "Sample Provider",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "kind": "provider",
+  "capabilities": ["completion", "streaming"],
+  "runtime_compatibility": { "runtime": ">=1", "sdk": ">=1" },
+  "dependencies": [],
+  "permissions": ["network"],
+  "supported_protocols": ["openai-compatible"],
+  "entrypoint": "sample_provider:SampleProvider",
+  "enabled": true,
+  "metadata": { "demo_only": true }
+}

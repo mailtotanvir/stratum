@@ -89,6 +89,7 @@ from app.routes.query_manifest import router as query_manifest_router
 from app.routes.recommendation_outcome_projections import (
     router as recommendation_outcome_projections_router,
 )
+from app.routes.platform import router as platform_router
 from app.routes.memory import router as memory_router
 from app.routes.repository_intelligence import (
     router as repository_intelligence_router,
@@ -184,6 +185,7 @@ app.include_router(reconstruct_router)
 app.include_router(provider_live_diagnostics.router)
 app.include_router(provider_live_verification.router)
 app.include_router(provider_health.router)
+app.include_router(platform_router)
 
 
 @app.get("/health")

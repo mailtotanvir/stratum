@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { getRuntimeApiBaseUrl } from './api/config';
+import { PlatformPanel } from './platform-panel';
 import {
   createRuntimeTask,
   cancelAgentInvocation,
@@ -33,6 +34,7 @@ import {
   getPatchRecords,
   getTransformationHistory,
   getRepositoryMemory,
+  getMemoryDiagnostics,
   getRuntimeDashboard,
   getRuntimeSession,
   getRuntimeSessionArtifacts,
@@ -40,7 +42,9 @@ import {
   getRuntimeStatus,
   getRuntimeWorkspaceArtifacts,
   getSkillRegistry,
+  getSkillRegistryDiagnostics,
   getWorkingMemory,
+  getRepositoryIntelligenceDiagnostics,
   interruptRuntimeTask,
   interruptExecutionInvocation,
   listRuntimeSessions,
@@ -82,9 +86,12 @@ import {
   type RuntimeWorkspaceArtifact,
   type RuntimeWorkspaceSummary,
   type RepositoryIntelligenceSummary,
+  type RepositoryIntelligenceDiagnostics,
   type RepositoryChangeSummary,
   type PatchRecordView,
   type SkillRegistryCatalog,
+  type SkillRegistryDiagnostics,
+  type MemoryDiagnostics,
   type WorkingMemory,
   type TransformationHistoryProjection,
   type ExecutionParticipant,
@@ -110,7 +117,8 @@ type ViewId =
   | 'engineering-knowledge'
   | 'transformation'
   | 'decision-intelligence'
-  | 'evaluation-accountability';
+  | 'evaluation-accountability'
+  | 'platform';
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error';
 
@@ -146,11 +154,14 @@ type ConsoleSnapshot = {
   selectedInvocationSummary: AgentInvocationSummary | null;
   selectedInvocationHistory: AgentInvocationHistorySummary | null;
   skillRegistry: SkillRegistryCatalog | null;
+  skillRegistryDiagnostics: SkillRegistryDiagnostics | null;
   workingMemory: WorkingMemory | null;
+  memoryDiagnostics: MemoryDiagnostics | null;
   repositoryMemory: RepositoryMemory | null;
   artifactMemory: ArtifactMemory[];
   decisionMemory: DecisionMemory[];
   repositoryIntelligence: RepositoryIntelligenceSummary | null;
+  repositoryIntelligenceDiagnostics: RepositoryIntelligenceDiagnostics | null;
   repositoryChangeSummary: RepositoryChangeSummary | null;
   artifactRecords: ArtifactRecordView[];
   patchRecords: PatchRecordView[];
@@ -195,6 +206,7 @@ const views: Array<{ id: ViewId; label: string; description: string }> = [
   { id: 'transformation', label: 'Transformation Lifecycle', description: 'Artifacts, patches, and repository changes' },
   { id: 'decision-intelligence', label: 'Decision Intelligence', description: 'Decision patterns and outcomes' },
   { id: 'evaluation-accountability', label: 'Evaluation Accountability', description: 'Scenarios, runs, and regressions' },
+  { id: 'platform', label: 'Platform Explorer', description: 'Extensions and diagnostics' },
 ];
 
 function isMockAgentAdapter(entry: AgentAdapterCatalogEntry) {
@@ -294,11 +306,14 @@ function useOperatorConsole() {
     selectedInvocationSummary: null,
     selectedInvocationHistory: null,
     skillRegistry: null,
+    skillRegistryDiagnostics: null,
     workingMemory: null,
+    memoryDiagnostics: null,
     repositoryMemory: null,
     artifactMemory: [],
     decisionMemory: [],
     repositoryIntelligence: null,
+    repositoryIntelligenceDiagnostics: null,
     repositoryChangeSummary: null,
     artifactRecords: [],
     patchRecords: [],
@@ -344,7 +359,7 @@ function useOperatorConsole() {
     setRefreshing(true);
     setError(null);
     try {
-      const [status, dashboard, sessions, workspaces, activeWorkspace, providerObservability, providerHealth, providerDiagnostics, providerExecutions, agentAdapters, agentAdapterDiagnostics, agentEventNormalization, agentInvocations, executionParticipants, executionParticipantDiagnostics, executionInvocations, skillRegistry, repositoryMemory, artifactMemory, decisionMemory, artifactRecords, patchRecords, repositoryChangeSummary, transformationHistory, repositoryIntelligence, engineeringKnowledge, decisionIntelligence, evaluationAccountability] =
+      const [status, dashboard, sessions, workspaces, activeWorkspace, providerObservability, providerHealth, providerDiagnostics, providerExecutions, agentAdapters, agentAdapterDiagnostics, agentEventNormalization, agentInvocations, executionParticipants, executionParticipantDiagnostics, executionInvocations, skillRegistry, skillRegistryDiagnostics, memoryDiagnostics, repositoryMemory, artifactMemory, decisionMemory, artifactRecords, patchRecords, repositoryChangeSummary, transformationHistory, repositoryIntelligence, repositoryIntelligenceDiagnostics, engineeringKnowledge, decisionIntelligence, evaluationAccountability] =
         await Promise.all([
           getRuntimeStatus(),
           getRuntimeDashboard(),
@@ -363,6 +378,8 @@ function useOperatorConsole() {
           getExecutionParticipantDiagnostics().catch(() => null),
           getExecutionInvocations().catch(() => []),
           getSkillRegistry().catch(() => null),
+          getSkillRegistryDiagnostics().catch(() => null),
+          getMemoryDiagnostics().catch(() => null),
           getRepositoryMemory().catch(() => null),
           getArtifactMemory().catch(() => []),
           getDecisionMemory().catch(() => []),
@@ -371,6 +388,7 @@ function useOperatorConsole() {
           getRepositoryChangeSummary().catch(() => null),
           getTransformationHistory().catch(() => null),
           getRepositoryIntelligence().catch(() => null),
+          getRepositoryIntelligenceDiagnostics().catch(() => null),
           getEngineeringKnowledge().catch(() => null),
           getDecisionIntelligence().catch(() => null),
           getEvaluationAccountabilityProjection().catch(() => null),
@@ -408,6 +426,8 @@ function useOperatorConsole() {
         selectedInvocationSummary: null,
         selectedInvocationHistory: null,
         skillRegistry,
+        skillRegistryDiagnostics,
+        memoryDiagnostics,
         workingMemory: nextWorkingMemory,
         repositoryMemory,
         artifactMemory,
@@ -417,6 +437,7 @@ function useOperatorConsole() {
         repositoryChangeSummary,
         transformationHistory,
         repositoryIntelligence,
+        repositoryIntelligenceDiagnostics,
         engineeringKnowledge,
         decisionIntelligence,
         evaluationAccountability,
@@ -455,7 +476,9 @@ function useOperatorConsole() {
         selectedInvocationSummary: null,
         selectedInvocationHistory: null,
         skillRegistry: null,
+        skillRegistryDiagnostics: null,
         workingMemory: null,
+        memoryDiagnostics: null,
         repositoryMemory: null,
         artifactMemory: [],
         decisionMemory: [],
@@ -464,6 +487,7 @@ function useOperatorConsole() {
         repositoryChangeSummary: null,
         transformationHistory: null,
         repositoryIntelligence: null,
+        repositoryIntelligenceDiagnostics: null,
         engineeringKnowledge: null,
         decisionIntelligence: null,
         evaluationAccountability: null,
@@ -1048,6 +1072,7 @@ function App() {
                     <div><dt>Category</dt><dd>{c.data.skillRegistry?.skills[0]?.category ?? 'n/a'}</dd></div>
                     <div><dt>Source</dt><dd>{c.data.skillRegistry?.skills[0]?.source ?? 'n/a'}</dd></div>
                   </dl>
+                  <p className="session-meta">{c.data.skillRegistryDiagnostics?.status ?? 'no diagnostics'} · warnings: {c.data.skillRegistryDiagnostics?.warnings.length ?? 0}</p>
                 </StateFrame>
               </Panel>
               <Panel title="Registered Skills">
@@ -1074,6 +1099,7 @@ function App() {
                     <div><dt>Latest event</dt><dd>{c.data.workingMemory?.latest_event_type ?? 'n/a'}</dd></div>
                     <div><dt>Recent artifacts</dt><dd>{c.data.workingMemory?.recent_artifact_ids.length ?? 0}</dd></div>
                   </dl>
+                  <p className="session-meta">working status: {c.data.memoryDiagnostics?.status ?? 'no diagnostics'} · reconstructed from {c.data.memoryDiagnostics?.source_summary.event_count ?? 0} events</p>
                   <p className="request-text">{c.data.workingMemory?.summary ?? 'n/a'}</p>
                 </StateFrame>
               </Panel>
@@ -1101,6 +1127,7 @@ function App() {
                     <div><dt>Modules</dt><dd>{c.data.repositoryIntelligence?.module_map.length ?? 0}</dd></div>
                     <div><dt>Evidence</dt><dd>{c.data.repositoryIntelligence?.evidence_sources.join(', ') ?? 'n/a'}</dd></div>
                   </dl>
+                  <p className="session-meta">diagnostics: {c.data.repositoryIntelligenceDiagnostics?.module_count ?? 0} modules · {c.data.repositoryIntelligenceDiagnostics?.runtime_inventory_count ?? 0} runtime items</p>
                   <p className="request-text">{c.data.repositoryIntelligence?.architecture_summary ?? 'n/a'}</p>
                 </StateFrame>
               </Panel>
@@ -1261,6 +1288,8 @@ function App() {
               </Panel>
             </section>
           ) : null}
+
+          {view === 'platform' ? <PlatformPanel /> : null}
 
           <Panel title="Invocation Detail">
             <StateFrame state={selectedInvocation ? 'ready' : c.state} loading="Loading invocation detail." empty="Select an invocation to inspect it." error={c.error ?? 'Invocation detail unavailable.'}>

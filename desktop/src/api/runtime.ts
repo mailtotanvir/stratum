@@ -371,6 +371,15 @@ export type SkillRegistryCatalog = {
   version_summary: Record<string, number>;
 };
 
+export type SkillRegistryDiagnostics = {
+  status: string;
+  total_skills: number;
+  duplicate_skill_ids: string[];
+  invalid_skill_ids: string[];
+  missing_dependency_ids: string[];
+  warnings: string[];
+};
+
 export type SkillManifestDiagnostics = {
   skill_id: string;
   status: string;
@@ -395,6 +404,18 @@ export type WorkingMemory = {
   recent_artifact_ids: string[];
   current_state: Record<string, unknown>;
   summary: string;
+};
+
+export type MemoryDiagnostics = {
+  status: string;
+  source_summary: MemorySourceSummary;
+  working_memory_count: number;
+  session_memory_count: number;
+  repository_memory_count: number;
+  artifact_memory_count: number;
+  decision_memory_count: number;
+  warnings: string[];
+  build_timestamp: string;
 };
 
 export type SessionMemory = {
@@ -454,6 +475,16 @@ export type RepositoryIntelligenceSummary = {
   runtime_inventory: Array<{ name: string; status: string; metadata: Record<string, unknown> }>;
   provider_inventory: Array<{ name: string; status: string; metadata: Record<string, unknown> }>;
   tool_inventory: Array<{ name: string; status: string; metadata: Record<string, unknown> }>;
+  evidence_sources: string[];
+};
+
+export type RepositoryIntelligenceDiagnostics = {
+  repository_id: string;
+  generated_at: string;
+  module_count: number;
+  runtime_inventory_count: number;
+  provider_inventory_count: number;
+  tool_inventory_count: number;
   evidence_sources: string[];
 };
 
@@ -553,6 +584,61 @@ export type EvaluationAccountabilityProjection = {
   regressions: EvaluationRegressionSummary;
   decisions: Array<Record<string, unknown>>;
   generated_at: string;
+};
+
+export type ExtensionManifestDependency = {
+  extension_id: string;
+  minimum_version: string;
+};
+
+export type ExtensionManifest = {
+  extension_id: string;
+  name: string;
+  version: string;
+  author: string;
+  description?: string | null;
+  kind:
+    | 'provider'
+    | 'tool'
+    | 'execution-participant'
+    | 'agent-adapter'
+    | 'skill'
+    | 'evaluation-pack'
+    | 'memory-provider'
+    | 'artifact-provider'
+    | 'workspace-provider';
+  capabilities: string[];
+  runtime_compatibility: Record<string, unknown>;
+  dependencies: ExtensionManifestDependency[];
+  permissions: string[];
+  supported_protocols: string[];
+  entrypoint?: string | null;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+};
+
+export type LoadedExtension = {
+  manifest: ExtensionManifest;
+  source_path: string;
+};
+
+export type PlatformExtensionDiagnostic = {
+  extension_id: string;
+  kind: string;
+  status: string;
+  compatible: boolean;
+  dependency_issues: string[];
+  warnings: string[];
+  source_path: string;
+};
+
+export type PlatformDiagnostics = {
+  installed_extensions: number;
+  disabled_extensions: number;
+  incompatible_extensions: number;
+  version_mismatches: number;
+  dependency_issues: number;
+  extensions: PlatformExtensionDiagnostic[];
 };
 
 export type ProviderRoutingDecision = {
@@ -988,6 +1074,8 @@ export const continueAgentLoopApproval = (approvalId: string) =>
     `/agent-loop/approvals/${encodeURIComponent(approvalId)}/continue`,
   );
 export const getSkillRegistry = () => fetchJson<SkillRegistryCatalog>('/runtime/skills');
+export const getSkillRegistryDiagnostics = () =>
+  fetchJson<SkillRegistryDiagnostics>('/runtime/skills/diagnostics');
 export const getExecutionParticipants = () =>
   fetchJson<ExecutionParticipant[]>('/runtime/execution-participants');
 export const getExecutionParticipantDiagnostics = () =>
@@ -1026,6 +1114,7 @@ export const getWorkingMemory = (sessionId?: string | null) =>
   fetchJson<WorkingMemory>(
     `/runtime/memory/working${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
   );
+export const getMemoryDiagnostics = () => fetchJson<MemoryDiagnostics>('/runtime/memory/diagnostics');
 export const getRepositoryMemory = () => fetchJson<RepositoryMemory>('/runtime/memory/repository');
 export const getArtifactMemory = () => fetchJson<ArtifactMemory[]>('/runtime/memory/artifacts');
 export const getDecisionMemory = () => fetchJson<DecisionMemory[]>('/runtime/memory/decisions');
@@ -1037,6 +1126,8 @@ export const getTransformationHistory = () =>
   fetchJson<TransformationHistoryProjection>('/runtime/transformation-history');
 export const getRepositoryIntelligence = () =>
   fetchJson<RepositoryIntelligenceSummary>('/runtime/repository-intelligence');
+export const getRepositoryIntelligenceDiagnostics = () =>
+  fetchJson<RepositoryIntelligenceDiagnostics>('/runtime/repository-intelligence/diagnostics');
 export const getEngineeringKnowledge = () =>
   fetchJson<EngineeringKnowledgeCatalog>('/runtime/engineering-knowledge');
 export const getDecisionIntelligence = () =>
@@ -1051,3 +1142,7 @@ export const getEvaluationAccountabilityScorecards = () =>
   fetchJson<EvaluationScorecard[]>('/evaluation-accountability/scorecards');
 export const getEvaluationAccountabilityRegressions = () =>
   fetchJson<EvaluationRegressionSummary>('/evaluation-accountability/regressions');
+export const getPlatformExtensions = () =>
+  fetchJson<{ extensions: LoadedExtension[] }>('/platform/extensions');
+export const getPlatformDiagnostics = () =>
+  fetchJson<PlatformDiagnostics>('/platform/diagnostics');

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.models.memory import (
     ArtifactMemory,
+    MemoryDiagnostics,
     DecisionMemory,
     RepositoryMemory,
     SessionMemory,
@@ -38,3 +39,8 @@ def get_artifact_memory() -> list[ArtifactMemory]:
 @router.get("/runtime/memory/decisions")
 def get_decision_memory() -> list[DecisionMemory]:
     return memory_reconstruction_service.reconstruct_decision_memory()
+
+
+@router.get("/runtime/memory/diagnostics")
+def get_memory_diagnostics() -> MemoryDiagnostics:
+    return memory_reconstruction_service.diagnostics()

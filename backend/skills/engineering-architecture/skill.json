@@ -1,0 +1,29 @@
+{
+  "manifest": {
+    "skill_id": "skill-engineering-architecture",
+    "name": "Engineering Architecture Review",
+    "version": 1,
+    "description": "Deterministic methodology for reviewing repository structure and service boundaries.",
+    "methodology": "Inspect repository events, artifacts, and service relationships before recommending changes.",
+    "category": "engineering",
+    "tags": ["architecture", "deterministic", "review"],
+    "steps": [
+      {
+        "instruction": "Inspect runtime events, persisted artifacts, and repository structure.",
+        "rationale": "Architecture advice should be grounded in runtime evidence."
+      },
+      {
+        "instruction": "Summarize stable service boundaries and integration surfaces.",
+        "rationale": "Stable boundaries reduce accidental coupling."
+      }
+    ],
+    "dependencies": [],
+    "parameters": {
+      "scope": "repository"
+    },
+    "metadata": {
+      "declarative": true
+    }
+  },
+  "source": "backend/skills/engineering-architecture/skill.json"
+}

@@ -1,0 +1,15 @@
+{
+  "extension_id": "sample-execution-participant",
+  "name": "Sample Execution Participant",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "kind": "execution-participant",
+  "capabilities": ["execution"],
+  "runtime_compatibility": { "runtime": ">=1", "sdk": ">=1" },
+  "dependencies": [],
+  "permissions": ["workspace-read", "workspace-write"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "sample_participant:SampleExecutionParticipant",
+  "enabled": true,
+  "metadata": { "demo_only": true }
+}

@@ -1,0 +1,15 @@
+{
+  "extension_id": "sample-workspace-provider",
+  "name": "Sample Workspace Provider",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "kind": "workspace-provider",
+  "capabilities": ["workspace-list"],
+  "runtime_compatibility": { "runtime": ">=1", "sdk": ">=1" },
+  "dependencies": [],
+  "permissions": ["workspace-read"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "sample_workspace:SampleWorkspaceProvider",
+  "enabled": true,
+  "metadata": { "demo_only": true }
+}

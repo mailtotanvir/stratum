@@ -1,0 +1,15 @@
+{
+  "extension_id": "sample-agent-adapter",
+  "name": "Sample Agent Adapter",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "kind": "agent-adapter",
+  "capabilities": ["agent-invocation", "tool-use"],
+  "runtime_compatibility": { "runtime": ">=1", "sdk": ">=1" },
+  "dependencies": [],
+  "permissions": ["filesystem"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "sample_adapter:SampleAgentAdapter",
+  "enabled": true,
+  "metadata": { "demo_only": true }
+}

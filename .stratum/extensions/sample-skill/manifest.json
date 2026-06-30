@@ -1,0 +1,15 @@
+{
+  "extension_id": "sample-skill",
+  "name": "Sample Skill",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "kind": "skill",
+  "capabilities": ["analysis"],
+  "runtime_compatibility": { "runtime": ">=1", "sdk": ">=1" },
+  "dependencies": [],
+  "permissions": ["workspace-read"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "sample_skill:SampleSkill",
+  "enabled": true,
+  "metadata": { "demo_only": true }
+}

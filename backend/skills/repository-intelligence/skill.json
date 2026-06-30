@@ -1,0 +1,34 @@
+{
+  "manifest": {
+    "skill_id": "skill-repository-intelligence",
+    "name": "Repository Intelligence",
+    "version": 1,
+    "description": "Deterministic repository summary from runtime state and memory projections.",
+    "methodology": "Derive architecture, inventory, and dependency summaries from runtime projections.",
+    "category": "intelligence",
+    "tags": ["repository", "summary", "inventory"],
+    "steps": [
+      {
+        "instruction": "Read the current runtime inventory and memory projections.",
+        "rationale": "Repository intelligence should reflect what the runtime actually knows."
+      },
+      {
+        "instruction": "Produce a concise architecture summary and evidence list.",
+        "rationale": "Summaries must be traceable to evidence sources."
+      }
+    ],
+    "dependencies": [
+      {
+        "skill_id": "skill-memory-reconstruction",
+        "minimum_version": 1
+      }
+    ],
+    "parameters": {
+      "include_inventory": true
+    },
+    "metadata": {
+      "declarative": true
+    }
+  },
+  "source": "backend/skills/repository-intelligence/skill.json"
+}

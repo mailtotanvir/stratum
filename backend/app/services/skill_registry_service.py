@@ -77,10 +77,15 @@ class SkillRegistryService:
 
     def diagnostics_for(self, skill_id: str) -> SkillManifestDiagnostics:
         skill = self._skills[skill_id]
+        warnings: list[str] = []
+        if not skill.manifest.steps:
+            warnings.append("Skill has no declared steps.")
+        if not skill.manifest.methodology.strip():
+            warnings.append("Skill has no declared methodology.")
         return SkillManifestDiagnostics(
             skill_id=skill_id,
-            status="healthy",
-            warnings=[],
+            status="degraded" if warnings else "healthy",
+            warnings=warnings,
             dependency_ids=[
                 dependency.skill_id for dependency in skill.manifest.dependencies
             ],

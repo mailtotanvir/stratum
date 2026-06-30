@@ -14,10 +14,15 @@ class SkillLoaderService:
         if not self._root.exists():
             return []
         paths = sorted(self._root.rglob("skill.json"))
-        return [self._load_manifest(path) for path in paths]
+        return sorted(
+            (self._load_manifest(path) for path in paths),
+            key=lambda item: item.manifest.skill_id,
+        )
 
     def _load_manifest(self, manifest_path: Path) -> Skill:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if "manifest" in data and "source" in data:
+            return Skill.model_validate(data)
         return Skill(
             manifest=SkillManifest.model_validate(data),
             source=manifest_path.as_posix(),

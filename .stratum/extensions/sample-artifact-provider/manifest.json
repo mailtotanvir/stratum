@@ -1,0 +1,15 @@
+{
+  "extension_id": "sample-artifact-provider",
+  "name": "Sample Artifact Provider",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "kind": "artifact-provider",
+  "capabilities": ["artifact-read"],
+  "runtime_compatibility": { "runtime": ">=1", "sdk": ">=1" },
+  "dependencies": [],
+  "permissions": ["read-artifacts"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "sample_artifact:SampleArtifactProvider",
+  "enabled": true,
+  "metadata": { "demo_only": true }
+}

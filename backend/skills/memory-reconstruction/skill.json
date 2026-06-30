@@ -1,0 +1,34 @@
+{
+  "manifest": {
+    "skill_id": "skill-memory-reconstruction",
+    "name": "Memory Reconstruction",
+    "version": 1,
+    "description": "Deterministic reconstruction of working, session, repository, artifact, and decision memory.",
+    "methodology": "Rebuild memory from persisted runtime events, session records, workspace artifacts, and loaded skills.",
+    "category": "memory",
+    "tags": ["memory", "reconstruction", "diagnostics"],
+    "steps": [
+      {
+        "instruction": "Collect persisted runtime events and session records.",
+        "rationale": "Events are the source of truth for reconstruction."
+      },
+      {
+        "instruction": "Project working, session, and repository memory deterministically.",
+        "rationale": "Memory must be rebuildable from runtime artifacts."
+      }
+    ],
+    "dependencies": [
+      {
+        "skill_id": "skill-engineering-architecture",
+        "minimum_version": 1
+      }
+    ],
+    "parameters": {
+      "session_id": null
+    },
+    "metadata": {
+      "declarative": true
+    }
+  },
+  "source": "backend/skills/memory-reconstruction/skill.json"
+}

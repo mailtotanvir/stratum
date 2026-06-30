@@ -63,27 +63,36 @@ class MemoryReconstructionService:
         ]
 
     def reconstruct_decision_memory(self) -> list[DecisionMemory]:
+        events = self._events.list_persisted_events()
         records = []
-        for event in self._events.list_persisted_events():
+        for event in events:
             if "decision_id" not in event.metadata:
                 continue
+            evidence = [
+                str(value)
+                for key, value in sorted(event.metadata.items())
+                if key.startswith("evidence")
+                and value is not None
+                and key != "evidence_count"
+            ]
+            if not evidence and event.metadata.get("evidence_id"):
+                evidence = [str(event.metadata["evidence_id"])]
+            alternatives = [
+                str(value)
+                for key, value in sorted(event.metadata.items())
+                if key.startswith("alternative") and value is not None
+            ]
             records.append(
                 DecisionMemory(
                     decision_id=str(event.metadata["decision_id"]),
                     rationale=str(event.metadata.get("rationale") or event.message),
-                    evidence=[str(event.metadata.get("evidence_id"))]
-                    if event.metadata.get("evidence_id")
-                    else [],
-                    alternatives=[
-                        str(event.metadata["alternative"])
-                    ]
-                    if event.metadata.get("alternative")
-                    else [],
+                    evidence=evidence,
+                    alternatives=alternatives,
                     outcome=str(event.metadata.get("outcome") or event.type.value),
                     session_id=event.metadata.get("session_id"),
                     repeated_count=sum(
                         1
-                        for candidate in self._events.list_persisted_events()
+                        for candidate in events
                         if candidate.metadata.get("decision_id")
                         == event.metadata["decision_id"]
                     ),
@@ -106,19 +115,31 @@ class MemoryReconstructionService:
             if session_id
             else []
         )
+        session_events = [
+            event
+            for event in events
+            if event.metadata.get("session_id") == session_id
+            or event.metadata.get("runtime_session_id") == session_id
+        ]
         active_skill_ids = [
             item.skill_id for item in self._skills.list_registry().skills
         ]
         return WorkingMemory(
             session_id=session_id,
             task_id=session.task_id if session is not None else None,
-            latest_event_id=latest.id if latest else None,
-            latest_event_type=latest.type.value if latest else None,
+            latest_event_id=session_events[-1].id if session_events else (latest.id if latest else None),
+            latest_event_type=session_events[-1].type.value if session_events else (latest.type.value if latest else None),
             active_skill_ids=active_skill_ids,
             recent_artifact_ids=[artifact.artifact_id for artifact in artifacts[:5]],
+            current_state={
+                "event_count": len(session_events),
+                "artifact_count": len(artifacts),
+                "last_activity_at": session_events[-1].ts if session_events else (session.created_at if session is not None else None),
+                "skill_count": len(active_skill_ids),
+            },
             summary=_working_summary(
                 session_id,
-                latest.type.value if latest else None,
+                session_events[-1].type.value if session_events else (latest.type.value if latest else None),
                 len(artifacts),
                 len(active_skill_ids),
             ),
@@ -135,6 +156,23 @@ class MemoryReconstructionService:
         workspace_artifacts = self._workspace_artifacts.list_session_artifacts(
             session_id
         )
+        approvals = [
+            str(event.metadata.get("approval_id") or event.id)
+            for event in events
+            if "approval" in event.type.value
+            or event.metadata.get("approval_id") is not None
+        ]
+        decisions = [
+            str(event.metadata.get("decision_id"))
+            for event in events
+            if event.metadata.get("decision_id") is not None
+        ]
+        observations = [
+            event.message
+            for event in events
+            if event.type.value.startswith("tool_")
+            or event.type.value.startswith("runtime_")
+        ]
         active_skill_ids = [
             item.skill_id for item in self._skills.list_registry().skills
         ]
@@ -146,6 +184,10 @@ class MemoryReconstructionService:
             artifact_ids=[artifact.artifact_id for artifact in workspace_artifacts],
             skill_ids=active_skill_ids,
             last_activity_at=events[-1].ts if events else session.created_at,
+            completed_work=[artifact.summary for artifact in workspace_artifacts],
+            decisions=decisions,
+            approvals=approvals,
+            observations=observations[:10],
             summary=_session_summary(
                 session.id,
                 session.status,
@@ -163,6 +205,12 @@ class MemoryReconstructionService:
         artifacts = self._artifacts.list_artifacts()
         generated_at = datetime.now(UTC)
         skill_ids = [item.skill_id for item in self._skills.list_registry().skills]
+        architecture_summaries = [
+            f"{len(sessions)} sessions reconstructed from runtime events",
+            f"{len(artifacts)} persisted artifacts available",
+            f"{len(skill_ids)} declarative skills registered",
+            f"{len(self._events.list_persisted_events())} runtime events replayed",
+        ]
         return RepositoryMemory(
             repository_id=self._workspace.configuration.workspace_id,
             generated_at=generated_at,
@@ -179,6 +227,24 @@ class MemoryReconstructionService:
             session_memories=session_memories,
             skill_ids=skill_ids,
             artifact_ids=[artifact.id for artifact in artifacts],
+            architecture_summaries=architecture_summaries,
+            technology_stack=[
+                "FastAPI",
+                "Pydantic",
+                "SQLite",
+                "React",
+                "TypeScript",
+            ],
+            coding_conventions=[
+                "runtime intelligence is deterministic and rebuildable",
+                "skills are declarative methodology/configuration only",
+                "memory projections are derived from persisted events and artifacts",
+            ],
+            project_structure=[
+                "backend/app/routes exposes runtime intelligence APIs",
+                "backend/app/services reconstructs projections from persisted state",
+                "desktop/src renders operator console views for runtime intelligence",
+            ],
             summary=_repository_summary(
                 len(session_memories), len(skill_ids), len(artifacts)
             ),
