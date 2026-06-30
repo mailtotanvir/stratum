@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.models.memory import (
+    ArtifactMemory,
+    DecisionMemory,
     MemoryDiagnostics,
     MemorySourceSummary,
     RepositoryMemory,
@@ -47,6 +49,47 @@ class MemoryReconstructionService:
         )
         self._skills = skills or skill_registry_service
         self._artifacts = artifacts or artifact_service
+
+    def reconstruct_artifact_memory(self) -> list[ArtifactMemory]:
+        return [
+            ArtifactMemory(
+                artifact_id=artifact.id,
+                summary=artifact.path,
+                created_at=artifact.created_at,
+                artifact_type=artifact.kind,
+                metadata=artifact.metadata or {},
+            )
+            for artifact in self._artifacts.list_artifacts()
+        ]
+
+    def reconstruct_decision_memory(self) -> list[DecisionMemory]:
+        records = []
+        for event in self._events.list_persisted_events():
+            if "decision_id" not in event.metadata:
+                continue
+            records.append(
+                DecisionMemory(
+                    decision_id=str(event.metadata["decision_id"]),
+                    rationale=str(event.metadata.get("rationale") or event.message),
+                    evidence=[str(event.metadata.get("evidence_id"))]
+                    if event.metadata.get("evidence_id")
+                    else [],
+                    alternatives=[
+                        str(event.metadata["alternative"])
+                    ]
+                    if event.metadata.get("alternative")
+                    else [],
+                    outcome=str(event.metadata.get("outcome") or event.type.value),
+                    session_id=event.metadata.get("session_id"),
+                    repeated_count=sum(
+                        1
+                        for candidate in self._events.list_persisted_events()
+                        if candidate.metadata.get("decision_id")
+                        == event.metadata["decision_id"]
+                    ),
+                )
+            )
+        return records
 
     def reconstruct_working_memory(
         self, session_id: str | None = None
@@ -158,6 +201,8 @@ class MemoryReconstructionService:
             working_memory_count=1,
             session_memory_count=source_summary.session_count,
             repository_memory_count=1,
+            artifact_memory_count=len(self.reconstruct_artifact_memory()),
+            decision_memory_count=len(self.reconstruct_decision_memory()),
             warnings=[],
             build_timestamp=datetime.now(UTC),
         )

@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { getRuntimeApiBaseUrl } from './api/config';
 import {
   getRuntimeDashboard,
+  getRuntimeSessionGovernance,
   getRuntimeSessionEvents,
   getRuntimeStatus,
   type RuntimeDashboard,
+  type RuntimeGovernanceSnapshot,
   type RuntimeSessionOverview,
   type RuntimeStatus,
 } from './api/runtime';
@@ -26,6 +28,7 @@ export function RuntimeConsole() {
   const [sessions, setSessions] = useState<RuntimeSessionOverview[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<RuntimeSessionOverview | null>(null);
+  const [selectedGovernance, setSelectedGovernance] = useState<RuntimeGovernanceSnapshot | null>(null);
   const [selectedSessionEvents, setSelectedSessionEvents] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,17 +54,21 @@ export function RuntimeConsole() {
       );
       if (nextSessionId) {
         const events = await getRuntimeSessionEvents(nextSessionId);
+        const governance = await getRuntimeSessionGovernance(nextSessionId).catch(() => null);
         setSelectedSessionEvents(
           events.slice(0, 6).map((event) => `${event.type}${event.message ? `: ${event.message}` : ''}`),
         );
+        setSelectedGovernance(governance);
       } else {
         setSelectedSessionEvents([]);
+        setSelectedGovernance(null);
       }
     } catch (err) {
       setStatus(null);
       setDashboard(null);
       setSessions([]);
       setSelectedSession(null);
+      setSelectedGovernance(null);
       setSelectedSessionEvents([]);
       setState('error');
       setError(err instanceof Error ? err.message : `Backend unavailable at ${apiBaseUrl}`);
@@ -187,7 +194,22 @@ export function RuntimeConsole() {
                 <div><dt>Status</dt><dd>{activeSession.status}</dd></div>
                 <div><dt>Request</dt><dd>{activeSession.user_request ?? 'No request text'}</dd></div>
                 <div><dt>Result</dt><dd>{activeSession.final_answer ?? activeSession.error ?? 'Pending'}</dd></div>
+                <div><dt>Approval</dt><dd>{selectedGovernance?.pending_approval ? 'pending' : 'clear'}</dd></div>
+                <div><dt>Interrupted</dt><dd>{selectedGovernance?.interrupted ? selectedGovernance.interrupt_reason ?? 'yes' : 'no'}</dd></div>
               </dl>
+              {selectedGovernance?.approval_history?.length ? (
+                <>
+                  <h3>Approval history</h3>
+                  <ul className="timeline">
+                    {selectedGovernance.approval_history.map((entry) => (
+                      <li key={`${entry.timestamp}-${entry.status}`}>
+                        <strong>{entry.status}</strong>
+                        <span>{entry.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
               <h3>Recent events</h3>
               {selectedSessionEvents.length ? (
                 <ul className="timeline">

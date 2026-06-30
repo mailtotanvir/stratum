@@ -17,6 +17,28 @@ export type RuntimeSessionOverview = {
   updated_at: string;
 };
 
+export type RuntimeGovernanceHistoryItem = {
+  approval_id?: string | null;
+  status: string;
+  reason?: string | null;
+  iteration?: number | null;
+  tool?: string | null;
+  arguments?: Record<string, unknown> | null;
+  message: string;
+  timestamp: string;
+};
+
+export type RuntimeGovernanceSnapshot = {
+  session_id: string;
+  pending_approval: boolean;
+  pending_approval_id?: string | null;
+  approval_history: RuntimeGovernanceHistoryItem[];
+  interrupted: boolean;
+  interrupt_reason?: string | null;
+  approval_events: RuntimeTimelineItem[];
+  decision_evidence: RuntimeEvent[];
+};
+
 export type RuntimeDashboard = {
   active_sessions: number;
   pending_approvals: number;
@@ -102,6 +124,15 @@ export type RuntimeTimelineItem = {
   payload: Record<string, unknown>;
 };
 
+export type RuntimeEvent = {
+  id: number;
+  ts: string;
+  type: string;
+  severity: string;
+  message: string;
+  metadata: Record<string, unknown>;
+};
+
 export type RuntimeWorkspaceArtifact = {
   artifact_id: string;
   workspace_id: string;
@@ -120,6 +151,77 @@ export type RuntimeWorkspaceArtifact = {
     kind: string;
     created_at: string;
     metadata?: Record<string, unknown> | null;
+  };
+};
+
+export type ArtifactRecordView = {
+  id: string;
+  type: string;
+  path: string;
+  origin_event_id?: number | null;
+  session_id?: string | null;
+  workspace_id?: string | null;
+  producer?: string | null;
+  status: string;
+  metadata: Record<string, unknown>;
+  checksum?: string | null;
+};
+
+export type PatchRecordView = {
+  id: string;
+  session_id?: string | null;
+  proposal_id?: string | null;
+  artifact_id?: string | null;
+  status: string;
+  affected_files: string[];
+  origin_event_id?: number | null;
+  approval_event_id?: number | null;
+  validation_result?: string | null;
+  rollback_reference?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type RepositoryChangeSummary = {
+  workspace_id?: string | null;
+  path?: string | null;
+  repository_detected: boolean;
+  branch?: string | null;
+  head_commit?: string | null;
+  dirty_workspace: boolean;
+  unsafe_workspace: boolean;
+  modified_files: string[];
+  added_files: string[];
+  deleted_files: string[];
+  diff_summaries: string[];
+  git_status: string[];
+  checkpoint_commit?: string | null;
+  rollback_reference?: string | null;
+  warnings: string[];
+  status: string;
+  metadata: Record<string, unknown>;
+};
+
+export type TransformationHistoryItem = {
+  timestamp: string;
+  session_id?: string | null;
+  task_id?: string | null;
+  proposal_id?: string | null;
+  patch_id?: string | null;
+  artifact_id?: string | null;
+  event_id?: number | null;
+  stage: string;
+  status: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+};
+
+export type TransformationHistoryProjection = {
+  items: TransformationHistoryItem[];
+  summary: {
+    total_events: number;
+    repeated_patterns: string[];
+    failed_attempts: number;
+    sessions_with_transformations: number;
   };
 };
 
@@ -258,11 +360,23 @@ export type SkillRegistryEntry = {
   version: number;
   category: string;
   source: string;
+  dependency_count: number;
+  parameter_count: number;
 };
 
 export type SkillRegistryCatalog = {
   skills: SkillRegistryEntry[];
   registered_skills_total: number;
+  categories: string[];
+  version_summary: Record<string, number>;
+};
+
+export type SkillManifestDiagnostics = {
+  skill_id: string;
+  status: string;
+  warnings: string[];
+  dependency_ids: string[];
+  parameter_names: string[];
 };
 
 export type MemorySourceSummary = {
@@ -279,6 +393,7 @@ export type WorkingMemory = {
   latest_event_type?: string | null;
   active_skill_ids: string[];
   recent_artifact_ids: string[];
+  current_state: Record<string, unknown>;
   summary: string;
 };
 
@@ -290,6 +405,10 @@ export type SessionMemory = {
   artifact_ids: string[];
   skill_ids: string[];
   last_activity_at?: string | null;
+  completed_work: string[];
+  decisions: string[];
+  approvals: string[];
+  observations: string[];
   summary: string;
 };
 
@@ -300,7 +419,140 @@ export type RepositoryMemory = {
   session_memories: SessionMemory[];
   skill_ids: string[];
   artifact_ids: string[];
+  architecture_summaries: string[];
+  technology_stack: string[];
+  coding_conventions: string[];
+  project_structure: string[];
   summary: string;
+};
+
+export type ArtifactMemory = {
+  artifact_id: string;
+  summary: string;
+  created_at: string;
+  artifact_type: string;
+  metadata: Record<string, unknown>;
+};
+
+export type DecisionMemory = {
+  decision_id: string;
+  rationale: string;
+  evidence: string[];
+  alternatives: string[];
+  outcome: string;
+  session_id?: string | null;
+  repeated_count: number;
+};
+
+export type RepositoryIntelligenceSummary = {
+  repository_id: string;
+  generated_at: string;
+  architecture_summary: string;
+  module_map: Array<{ module_name: string; path: string; kind: string }>;
+  service_graph: string[];
+  dependency_overview: Array<{ name: string; version?: string | null; scope: string }>;
+  runtime_inventory: Array<{ name: string; status: string; metadata: Record<string, unknown> }>;
+  provider_inventory: Array<{ name: string; status: string; metadata: Record<string, unknown> }>;
+  tool_inventory: Array<{ name: string; status: string; metadata: Record<string, unknown> }>;
+  evidence_sources: string[];
+};
+
+export type EngineeringKnowledgeCatalog = {
+  generated_at: string;
+  entries: Array<{
+    knowledge_id: string;
+    category: string;
+    title: string;
+    summary: string;
+    evidence: string[];
+    created_at: string;
+  }>;
+};
+
+export type DecisionIntelligenceSummary = {
+  generated_at: string;
+  recurring_decisions: Array<{
+    decision_key: string;
+    decision_type: string;
+    occurrences: number;
+    failures: number;
+    rationale: string;
+  }>;
+  repeated_failures: Array<{
+    decision_key: string;
+    decision_type: string;
+    occurrences: number;
+    failures: number;
+    rationale: string;
+  }>;
+  evaluation_history: string[];
+  proposal_outcomes: string[];
+  engineering_rationale: string[];
+};
+
+export type EvaluationScenario = {
+  scenario_id: string;
+  title: string;
+  purpose: string;
+  input_fixture: string;
+  expected_behavior: string;
+  rubric: string;
+  target_type: string;
+  version: number;
+  tags: string[];
+  risk_level: string;
+  created_at: string;
+};
+
+export type EvaluationRun = {
+  run_id: string;
+  scenario_id: string;
+  target_type: string;
+  target_id: string;
+  target_runtime_event_id?: number | null;
+  evaluator: string;
+  evaluator_type: string;
+  outcome: string;
+  score?: number | null;
+  evidence: Array<Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  scenario_version: number;
+};
+
+export type EvaluationScorecard = {
+  target_type: string;
+  target_id: string;
+  evaluation_count: number;
+  pass_count: number;
+  fail_count: number;
+  inconclusive_count: number;
+  average_score?: number | null;
+  latest_run_id?: string | null;
+  latest_outcome?: string | null;
+  latest_evaluated_at?: string | null;
+};
+
+export type EvaluationRegressionSummary = {
+  total_targets: number;
+  comparison_count: number;
+  regressed_count: number;
+  improved_count: number;
+  unchanged_count: number;
+  repeated_failure_signatures: Array<{ signature: string; count: number }>;
+  quality_drift_indicators: string[];
+  findings: Array<Record<string, unknown>>;
+  generated_at: string;
+};
+
+export type EvaluationAccountabilityProjection = {
+  scenarios: EvaluationScenario[];
+  runs: EvaluationRun[];
+  scorecards: EvaluationScorecard[];
+  regressions: EvaluationRegressionSummary;
+  decisions: Array<Record<string, unknown>>;
+  generated_at: string;
 };
 
 export type ProviderRoutingDecision = {
@@ -501,6 +753,78 @@ export type AgentLoopRequest = {
   model?: string | null;
 };
 
+export type ExecutionParticipantKind =
+  | 'human'
+  | 'local_tool'
+  | 'provider'
+  | 'external_agent'
+  | 'mcp_server'
+  | 'a2a_agent'
+  | 'future_adapter';
+
+export type ExecutionParticipantHealth = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+export type ExecutionParticipantLifecycle = 'registered' | 'available' | 'unavailable' | 'degraded' | 'disabled';
+export type ExecutionInvocationState =
+  | 'created'
+  | 'validated'
+  | 'queued'
+  | 'executing'
+  | 'waiting'
+  | 'waiting_for_approval'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out'
+  | 'interrupted';
+
+export type ExecutionParticipant = {
+  participant_id: string;
+  display_name: string;
+  kind: ExecutionParticipantKind;
+  identity: Record<string, unknown>;
+  capabilities: Array<{ capability_id: string; description?: string | null; operations: string[] }>;
+  lifecycle: ExecutionParticipantLifecycle;
+  health: ExecutionParticipantHealth;
+  availability: string;
+  diagnostics: Record<string, unknown>;
+  version: string;
+  supported_operations: string[];
+  contract: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+};
+
+export type ExecutionParticipantRegistryDiagnostics = {
+  status: string;
+  total_participants: number;
+  kinds: Record<string, number>;
+  warnings: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type ExecutionParticipantRegistry = {
+  participants: ExecutionParticipant[];
+  selected_participant_id?: string | null;
+  eligible_participant_ids: string[];
+};
+
+export type ExecutionInvocation = {
+  invocation_id: string;
+  participant_id: string;
+  capability_id: string;
+  state: ExecutionInvocationState;
+  requested_by: string;
+  input_payload: Record<string, unknown>;
+  output_payload: Record<string, unknown>;
+  artifacts: Array<Record<string, unknown>>;
+  events: string[];
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error?: string | null;
+  metadata: Record<string, unknown>;
+};
+
 export type TaskCreateRequest = {
   title: string;
 };
@@ -584,10 +908,22 @@ export const getRuntimeSessionTimeline = (sessionId: string) =>
   fetchJson<RuntimeTimelineItem[]>(
     `/runtime/session/${encodeURIComponent(sessionId)}/timeline`,
   );
+export const getRuntimeSessionGovernance = (sessionId: string) =>
+  fetchJson<RuntimeGovernanceSnapshot>(
+    `/runtime/session/${encodeURIComponent(sessionId)}/governance`,
+  );
 export const runAgentLoop = (request: AgentLoopRequest) =>
   postJson<AgentLoopResult>('/agent-loop/run', request);
 export const runRuntimeTask = (taskId: string) =>
   postJson<Record<string, unknown>>(`/runtime/tasks/${encodeURIComponent(taskId)}/run`);
+export const interruptRuntimeTask = (taskId: string, reason = 'Interrupted from desktop console') =>
+  postJson<Record<string, unknown>>(`/runtime/tasks/${encodeURIComponent(taskId)}/interrupt`, {
+    reason,
+  });
+export const stopRuntimeTask = (taskId: string, reason = 'Stopped from desktop console') =>
+  postJson<Record<string, unknown>>(`/runtime/tasks/${encodeURIComponent(taskId)}/stop`, {
+    reason,
+  });
 export const getRuntimeSessionEvents = (sessionId: string) =>
   fetchJson<RuntimeAgentLoopEvent[]>(
     `/agent-loop/events/${encodeURIComponent(sessionId)}`,
@@ -652,8 +988,66 @@ export const continueAgentLoopApproval = (approvalId: string) =>
     `/agent-loop/approvals/${encodeURIComponent(approvalId)}/continue`,
   );
 export const getSkillRegistry = () => fetchJson<SkillRegistryCatalog>('/runtime/skills');
+export const getExecutionParticipants = () =>
+  fetchJson<ExecutionParticipant[]>('/runtime/execution-participants');
+export const getExecutionParticipantDiagnostics = () =>
+  fetchJson<ExecutionParticipantRegistryDiagnostics>('/runtime/execution-participants/diagnostics');
+export const routeExecutionCapability = (capabilityId: string) =>
+  postJson<ExecutionParticipantRegistry>('/runtime/execution-participants/route', {
+    capability_id: capabilityId,
+  });
+export const getExecutionInvocations = () =>
+  fetchJson<ExecutionInvocation[]>('/runtime/execution-invocations');
+export const createExecutionInvocation = (capabilityId: string) =>
+  postJson<ExecutionInvocation>('/runtime/execution-invocations', {
+    capability_id: capabilityId,
+  });
+export const startExecutionInvocation = (invocationId: string) =>
+  postJson<ExecutionInvocation>(`/runtime/execution-invocations/${encodeURIComponent(invocationId)}/start`);
+export const completeExecutionInvocation = (invocationId: string, metadata: Record<string, unknown> = {}) =>
+  postJson<ExecutionInvocation>(`/runtime/execution-invocations/${encodeURIComponent(invocationId)}/complete`, {
+    metadata,
+  });
+export const failExecutionInvocation = (invocationId: string, reason = 'failed') =>
+  postJson<ExecutionInvocation>(`/runtime/execution-invocations/${encodeURIComponent(invocationId)}/fail`, {
+    reason,
+  });
+export const cancelExecutionInvocation = (invocationId: string, reason = 'cancelled') =>
+  postJson<ExecutionInvocation>(`/runtime/execution-invocations/${encodeURIComponent(invocationId)}/cancel`, {
+    reason,
+  });
+export const interruptExecutionInvocation = (invocationId: string, reason = 'interrupted') =>
+  postJson<ExecutionInvocation>(`/runtime/execution-invocations/${encodeURIComponent(invocationId)}/interrupt`, {
+    reason,
+  });
+export const getSkillDiagnostics = (skillId: string) =>
+  fetchJson<SkillManifestDiagnostics>(`/runtime/skills/${encodeURIComponent(skillId)}/diagnostics`);
 export const getWorkingMemory = (sessionId?: string | null) =>
   fetchJson<WorkingMemory>(
     `/runtime/memory/working${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
   );
 export const getRepositoryMemory = () => fetchJson<RepositoryMemory>('/runtime/memory/repository');
+export const getArtifactMemory = () => fetchJson<ArtifactMemory[]>('/runtime/memory/artifacts');
+export const getDecisionMemory = () => fetchJson<DecisionMemory[]>('/runtime/memory/decisions');
+export const getArtifactRecords = () => fetchJson<ArtifactRecordView[]>('/runtime/artifacts');
+export const getPatchRecords = () => fetchJson<PatchRecordView[]>('/runtime/patches');
+export const getRepositoryChangeSummary = () =>
+  fetchJson<RepositoryChangeSummary>('/runtime/repository-change-summary');
+export const getTransformationHistory = () =>
+  fetchJson<TransformationHistoryProjection>('/runtime/transformation-history');
+export const getRepositoryIntelligence = () =>
+  fetchJson<RepositoryIntelligenceSummary>('/runtime/repository-intelligence');
+export const getEngineeringKnowledge = () =>
+  fetchJson<EngineeringKnowledgeCatalog>('/runtime/engineering-knowledge');
+export const getDecisionIntelligence = () =>
+  fetchJson<DecisionIntelligenceSummary>('/runtime/decision-intelligence');
+export const getEvaluationAccountabilityProjection = () =>
+  fetchJson<EvaluationAccountabilityProjection>('/evaluation-accountability/projection');
+export const getEvaluationAccountabilityScenarios = () =>
+  fetchJson<EvaluationScenario[]>('/evaluation-accountability/scenarios');
+export const getEvaluationAccountabilityRuns = () =>
+  fetchJson<EvaluationRun[]>('/evaluation-accountability/runs');
+export const getEvaluationAccountabilityScorecards = () =>
+  fetchJson<EvaluationScorecard[]>('/evaluation-accountability/scorecards');
+export const getEvaluationAccountabilityRegressions = () =>
+  fetchJson<EvaluationRegressionSummary>('/evaluation-accountability/regressions');

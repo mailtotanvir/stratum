@@ -11,9 +11,11 @@ from app.routes.agent_adapter_catalog import (
     router as agent_adapter_catalog_router,
 )
 from app.routes.artifact import router as artifact_router
+from app.routes.transformation_history import router as transformation_history_router
 from app.routes.artifact_lineage import router as artifact_lineage_router
 from app.routes.diagnostics import router as diagnostics_router
 from app.routes.decision_lineage import router as decision_lineage_router
+from app.routes.decision_intelligence import router as decision_intelligence_router
 from app.routes.decision_effectiveness_projections import (
     router as decision_effectiveness_projections_router,
 )
@@ -24,6 +26,9 @@ from app.routes.evaluation_coverage import router as evaluation_coverage_router
 from app.routes.evaluation_drift import router as evaluation_drift_router
 from app.routes.evaluation_intelligence_overview import (
     router as evaluation_intelligence_overview_router,
+)
+from app.routes.evaluation_accountability import (
+    router as evaluation_accountability_router,
 )
 from app.routes.evaluation_reconstruction import (
     router as evaluation_reconstruction_router,
@@ -49,6 +54,7 @@ from app.routes.governance_health_rollup_projections import (
     router as governance_health_rollup_projections_router,
 )
 from app.routes.explainability import router as explainability_router
+from app.routes.execution_participants import router as execution_participants_router
 from app.routes.hitl import router as hitl_router
 from app.routes.interrupt import router as interrupt_router
 from app.routes.observability import router as observability_router
@@ -84,6 +90,12 @@ from app.routes.recommendation_outcome_projections import (
     router as recommendation_outcome_projections_router,
 )
 from app.routes.memory import router as memory_router
+from app.routes.repository_intelligence import (
+    router as repository_intelligence_router,
+)
+from app.routes.engineering_knowledge import (
+    router as engineering_knowledge_router,
+)
 from app.routes.reconstruct import router as reconstruct_router
 from app.routes.reflection import router as reflection_router
 from app.routes.runtime import router as runtime_router
@@ -110,14 +122,17 @@ app.include_router(agent_execution_diagnostics_router)
 app.include_router(agent_invocation_router)
 app.include_router(agent_adapter_catalog_router)
 app.include_router(artifact_router)
+app.include_router(transformation_history_router)
 app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
 app.include_router(decision_effectiveness_projections_router)
 app.include_router(decision_lineage_router)
+app.include_router(decision_intelligence_router)
 app.include_router(evaluation_coverage_router)
 app.include_router(evaluation_diagnostics_router)
 app.include_router(evaluation_drift_router)
 app.include_router(evaluation_intelligence_overview_router)
+app.include_router(evaluation_accountability_router)
 app.include_router(evaluation_reconstruction_router)
 app.include_router(evaluation_outcome_projections_router)
 app.include_router(evaluation_projections_router)
@@ -128,6 +143,7 @@ app.include_router(evaluation_records_router)
 app.include_router(evaluation_registry_router)
 app.include_router(evaluations_router)
 app.include_router(explainability_router)
+app.include_router(execution_participants_router)
 app.include_router(governance_router)
 app.include_router(governance_health_rollup_projections_router)
 app.include_router(hitl_router)
@@ -151,6 +167,8 @@ app.include_router(query_health_router)
 app.include_router(query_manifest_router)
 app.include_router(recommendation_outcome_projections_router)
 app.include_router(memory_router)
+app.include_router(repository_intelligence_router)
+app.include_router(engineering_knowledge_router)
 app.include_router(reflection_router)
 app.include_router(runtime_router)
 app.include_router(runtime_intelligence_router)

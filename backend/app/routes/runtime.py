@@ -384,6 +384,9 @@ def _session_state(session_id: str) -> dict[str, Any]:
         "max_iterations": None,
         "pending_approval": False,
         "pending_approval_id": None,
+        "approval_history": [],
+        "interrupted": False,
+        "interrupt_reason": None,
         "last_tool": None,
         "final_answer": None,
         "error": None,
@@ -406,12 +409,65 @@ def _session_state(session_id: str) -> dict[str, Any]:
         if event.type == EventType.AGENT_LOOP_APPROVAL_REQUESTED:
             state["pending_approval"] = True
             state["pending_approval_id"] = metadata.get("approval_id")
+            state["approval_history"].append(
+                {
+                    "approval_id": metadata.get("approval_id"),
+                    "status": metadata.get("status"),
+                    "iteration": metadata.get("iteration"),
+                    "tool": metadata.get("tool"),
+                    "arguments": metadata.get("arguments", {}),
+                    "message": event.message,
+                    "timestamp": event.ts,
+                }
+            )
         elif event.type == EventType.AGENT_LOOP_APPROVAL_RESPONDED:
             state["pending_approval"] = False
+            state["approval_history"].append(
+                {
+                    "approval_id": metadata.get("approval_id"),
+                    "status": metadata.get("status"),
+                    "reason": metadata.get("reason"),
+                    "message": event.message,
+                    "timestamp": event.ts,
+                }
+            )
+        elif event.type == EventType.AGENT_LOOP_APPROVAL_RESUMED:
+            state["approval_history"].append(
+                {
+                    "approval_id": metadata.get("approval_id"),
+                    "status": "resumed",
+                    "iteration": metadata.get("iteration"),
+                    "tool": metadata.get("tool"),
+                    "message": event.message,
+                    "timestamp": event.ts,
+                }
+            )
+        elif event.type == EventType.AGENT_LOOP_APPROVAL_RESUME_REJECTED:
+            state["approval_history"].append(
+                {
+                    "approval_id": metadata.get("approval_id"),
+                    "status": "resume_rejected",
+                    "reason": metadata.get("reason"),
+                    "message": event.message,
+                    "timestamp": event.ts,
+                }
+            )
+        elif event.type == EventType.AGENT_LOOP_APPROVAL_CONTINUE_STARTED:
+            state["approval_history"].append(
+                {
+                    "approval_id": metadata.get("approval_id"),
+                    "status": "continue_started",
+                    "iteration": metadata.get("iteration"),
+                    "tool": metadata.get("tool"),
+                    "message": event.message,
+                    "timestamp": event.ts,
+                }
+            )
         elif event.type == EventType.AGENT_LOOP_COMPLETED:
             state["final_answer"] = metadata.get("final_answer")
             state["pending_approval"] = False
             state["pending_approval_id"] = None
+            state["interrupted"] = False
         elif event.type in {
             EventType.AGENT_LOOP_FAILED,
             EventType.AGENT_LOOP_STOPPED,
@@ -419,6 +475,9 @@ def _session_state(session_id: str) -> dict[str, Any]:
             state["error"] = metadata.get("error") or event.message
             state["pending_approval"] = False
             state["pending_approval_id"] = None
+        elif event.type == EventType.RUNTIME_SESSION_INTERRUPTED:
+            state["interrupted"] = True
+            state["interrupt_reason"] = metadata.get("reason")
     return state
 
 
@@ -517,6 +576,49 @@ def _dashboard_overview() -> RuntimeDashboardOverview:
         stopped_today=stopped_today,
         latest_sessions=latest_sessions,
     )
+
+
+@router.get("/runtime/session/{session_id}/governance")
+def get_runtime_session_governance(session_id: str) -> dict[str, Any]:
+    try:
+        session = runtime_session_service.get_session(session_id)
+    except RuntimeSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    state = _session_state(session.id)
+    events = _session_events(session.id)
+    approval_events = [
+        _timeline_item(event).model_dump(mode="json")
+        for event in events
+        if event.type
+        in {
+            EventType.AGENT_LOOP_APPROVAL_REQUESTED,
+            EventType.AGENT_LOOP_APPROVAL_RESPONDED,
+            EventType.AGENT_LOOP_APPROVAL_RESUMED,
+            EventType.AGENT_LOOP_APPROVAL_RESUME_REJECTED,
+            EventType.AGENT_LOOP_APPROVAL_CONTINUE_STARTED,
+        }
+    ]
+    return {
+        "session_id": session.id,
+        "pending_approval": bool(state["pending_approval"]),
+        "pending_approval_id": state["pending_approval_id"],
+        "approval_history": state["approval_history"],
+        "interrupted": bool(state["interrupted"]),
+        "interrupt_reason": state["interrupt_reason"],
+        "approval_events": approval_events,
+        "decision_evidence": [
+            event.to_dict()
+            for event in events
+            if event.type
+            in {
+                EventType.DECISION_RECORD_CREATED,
+                EventType.DECISION_EVIDENCE_CREATED,
+                EventType.PROPOSAL_GENERATED,
+                EventType.PROPOSAL_RESOLVED,
+            }
+        ],
+    }
 
 
 def to_proposal(record) -> Proposal:

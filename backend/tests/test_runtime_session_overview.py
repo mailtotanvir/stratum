@@ -92,3 +92,38 @@ def test_runtime_session_overview_404(tmp_path) -> None:
 
     assert response.status_code == 404
     assert summary_response.status_code == 404
+
+
+def test_runtime_session_governance_snapshot(tmp_path) -> None:
+    session = seed_session(tmp_path)
+    event_service.emit_event_sync(
+        EventType.AGENT_LOOP_APPROVAL_RESPONDED,
+        "Approval responded",
+        metadata={
+            "session_id": session.id,
+            "approval_id": "approval-1",
+            "status": "approved",
+            "reason": "Looks good",
+        },
+    )
+    event_service.emit_event_sync(
+        EventType.RUNTIME_SESSION_INTERRUPTED,
+        "Session interrupted",
+        metadata={
+            "session_id": session.id,
+            "reason": "operator requested pause",
+        },
+    )
+
+    client = TestClient(app)
+    response = client.get(f"/runtime/session/{session.id}/governance")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"] == session.id
+    assert body["pending_approval"] is False
+    assert body["pending_approval_id"] == "approval-1"
+    assert body["interrupted"] is True
+    assert body["interrupt_reason"] == "operator requested pause"
+    assert body["approval_history"][0]["approval_id"] == "approval-1"
+    assert body["approval_history"][1]["status"] == "approved"

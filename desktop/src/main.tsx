@@ -4,19 +4,34 @@ import { getRuntimeApiBaseUrl } from './api/config';
 import {
   createRuntimeTask,
   cancelAgentInvocation,
+  cancelExecutionInvocation,
   continueAgentLoopApproval,
   createAgentInvocation,
+  createExecutionInvocation,
   getActiveRuntimeWorkspace,
+  getExecutionInvocations,
+  getExecutionParticipantDiagnostics,
+  getExecutionParticipants,
   getAgentAdapterDiagnostics,
   getAgentAdapters,
   getAgentEventNormalizationCatalog,
   getAgentInvocationHistory,
   getAgentInvocationRecent,
   getAgentInvocationStatus,
+  getArtifactMemory,
+  getArtifactRecords,
+  getDecisionIntelligence,
+  getEvaluationAccountabilityProjection,
+  getDecisionMemory,
+  getEngineeringKnowledge,
   getProviderExecutionRecent,
   getProviderHealth,
   getProviderLiveDiagnostics,
   getProviderObservability,
+  getRepositoryIntelligence,
+  getRepositoryChangeSummary,
+  getPatchRecords,
+  getTransformationHistory,
   getRepositoryMemory,
   getRuntimeDashboard,
   getRuntimeSession,
@@ -26,11 +41,17 @@ import {
   getRuntimeWorkspaceArtifacts,
   getSkillRegistry,
   getWorkingMemory,
+  interruptRuntimeTask,
+  interruptExecutionInvocation,
   listRuntimeSessions,
   listRuntimeWorkspaces,
   respondToAgentLoopApproval,
   runAgentLoop,
   runRuntimeTask,
+  routeExecutionCapability,
+  stopRuntimeTask,
+  startExecutionInvocation,
+  completeExecutionInvocation,
   type AgentAdapterCatalogEntry,
   type AgentAdapterRegistryDiagnostics,
   type AgentCapabilityManifest,
@@ -39,6 +60,12 @@ import {
   type AgentInvocationRecord,
   type AgentInvocationSummary,
   type AgentLoopResult,
+  type ArtifactMemory,
+  type ArtifactRecordView,
+  type DecisionIntelligenceSummary,
+  type EvaluationAccountabilityProjection,
+  type DecisionMemory,
+  type EngineeringKnowledgeCatalog,
   type MemorySourceSummary,
   type ProviderExecutionRecentItem,
   type ProviderHealth,
@@ -54,8 +81,15 @@ import {
   type RuntimeWorkspace,
   type RuntimeWorkspaceArtifact,
   type RuntimeWorkspaceSummary,
+  type RepositoryIntelligenceSummary,
+  type RepositoryChangeSummary,
+  type PatchRecordView,
   type SkillRegistryCatalog,
   type WorkingMemory,
+  type TransformationHistoryProjection,
+  type ExecutionParticipant,
+  type ExecutionParticipantRegistryDiagnostics,
+  type ExecutionInvocation,
 } from './api/runtime';
 import './styles.css';
 
@@ -71,7 +105,12 @@ type ViewId =
   | 'settings'
   | 'marketplace'
   | 'skills'
-  | 'memory';
+  | 'memory'
+  | 'repository-intelligence'
+  | 'engineering-knowledge'
+  | 'transformation'
+  | 'decision-intelligence'
+  | 'evaluation-accountability';
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error';
 
@@ -100,17 +139,33 @@ type ConsoleSnapshot = {
   agentAdapterDiagnostics: AgentAdapterRegistryDiagnostics | null;
   agentEventNormalization: AgentEventNormalizationCatalog | null;
   agentInvocations: AgentInvocationRecord[];
+  executionParticipants: ExecutionParticipant[];
+  executionParticipantDiagnostics: ExecutionParticipantRegistryDiagnostics | null;
+  executionInvocations: ExecutionInvocation[];
   selectedInvocationId: string | null;
   selectedInvocationSummary: AgentInvocationSummary | null;
   selectedInvocationHistory: AgentInvocationHistorySummary | null;
   skillRegistry: SkillRegistryCatalog | null;
   workingMemory: WorkingMemory | null;
   repositoryMemory: RepositoryMemory | null;
+  artifactMemory: ArtifactMemory[];
+  decisionMemory: DecisionMemory[];
+  repositoryIntelligence: RepositoryIntelligenceSummary | null;
+  repositoryChangeSummary: RepositoryChangeSummary | null;
+  artifactRecords: ArtifactRecordView[];
+  patchRecords: PatchRecordView[];
+  transformationHistory: TransformationHistoryProjection | null;
+  engineeringKnowledge: EngineeringKnowledgeCatalog | null;
+  decisionIntelligence: DecisionIntelligenceSummary | null;
+  evaluationAccountability: EvaluationAccountabilityProjection | null;
 };
 
 type LaunchForm = {
   taskTitle: string;
   request: string;
+  spec: string;
+  context: string;
+  runtimeConfig: string;
   maxIterations: string;
   providerId: string;
   model: string;
@@ -135,6 +190,11 @@ const views: Array<{ id: ViewId; label: string; description: string }> = [
   { id: 'marketplace', label: 'Agent Marketplace', description: 'Adapters and invocations' },
   { id: 'skills', label: 'Skills', description: 'Registered skills summary' },
   { id: 'memory', label: 'Memory', description: 'Derived repository memory' },
+  { id: 'repository-intelligence', label: 'Repository Intelligence', description: 'Architecture and inventory projections' },
+  { id: 'engineering-knowledge', label: 'Engineering Knowledge', description: 'Reusable deterministic knowledge' },
+  { id: 'transformation', label: 'Transformation Lifecycle', description: 'Artifacts, patches, and repository changes' },
+  { id: 'decision-intelligence', label: 'Decision Intelligence', description: 'Decision patterns and outcomes' },
+  { id: 'evaluation-accountability', label: 'Evaluation Accountability', description: 'Scenarios, runs, and regressions' },
 ];
 
 function isMockAgentAdapter(entry: AgentAdapterCatalogEntry) {
@@ -193,10 +253,14 @@ function useOperatorConsole() {
   const [launchForm, setLaunchForm] = React.useState<LaunchForm>({
     taskTitle: '',
     request: '',
+    spec: '',
+    context: '',
+    runtimeConfig: '{\n  "mode": "governed"\n}',
     maxIterations: '5',
     providerId: '',
     model: '',
   });
+  const [workflowError, setWorkflowError] = React.useState<string | null>(null);
   const [invocationForm, setInvocationForm] = React.useState<InvocationForm>({
     adapterId: '',
     capabilityId: '',
@@ -223,12 +287,25 @@ function useOperatorConsole() {
     agentAdapterDiagnostics: null,
     agentEventNormalization: null,
     agentInvocations: [],
+    executionParticipants: [],
+    executionParticipantDiagnostics: null,
+    executionInvocations: [],
     selectedInvocationId: null,
     selectedInvocationSummary: null,
     selectedInvocationHistory: null,
     skillRegistry: null,
     workingMemory: null,
     repositoryMemory: null,
+    artifactMemory: [],
+    decisionMemory: [],
+    repositoryIntelligence: null,
+    repositoryChangeSummary: null,
+    artifactRecords: [],
+    patchRecords: [],
+    transformationHistory: null,
+    engineeringKnowledge: null,
+    decisionIntelligence: null,
+    evaluationAccountability: null,
   });
 
   const loadSelectedSession = async (sessionId: string | null) => {
@@ -267,7 +344,7 @@ function useOperatorConsole() {
     setRefreshing(true);
     setError(null);
     try {
-      const [status, dashboard, sessions, workspaces, activeWorkspace, providerObservability, providerHealth, providerDiagnostics, providerExecutions, agentAdapters, agentAdapterDiagnostics, agentEventNormalization, agentInvocations, skillRegistry, repositoryMemory] =
+      const [status, dashboard, sessions, workspaces, activeWorkspace, providerObservability, providerHealth, providerDiagnostics, providerExecutions, agentAdapters, agentAdapterDiagnostics, agentEventNormalization, agentInvocations, executionParticipants, executionParticipantDiagnostics, executionInvocations, skillRegistry, repositoryMemory, artifactMemory, decisionMemory, artifactRecords, patchRecords, repositoryChangeSummary, transformationHistory, repositoryIntelligence, engineeringKnowledge, decisionIntelligence, evaluationAccountability] =
         await Promise.all([
           getRuntimeStatus(),
           getRuntimeDashboard(),
@@ -282,8 +359,21 @@ function useOperatorConsole() {
           getAgentAdapterDiagnostics().catch(() => null),
           getAgentEventNormalizationCatalog().catch(() => null),
           getAgentInvocationRecent().catch(() => ({ invocations: [] })),
+          getExecutionParticipants().catch(() => []),
+          getExecutionParticipantDiagnostics().catch(() => null),
+          getExecutionInvocations().catch(() => []),
           getSkillRegistry().catch(() => null),
           getRepositoryMemory().catch(() => null),
+          getArtifactMemory().catch(() => []),
+          getDecisionMemory().catch(() => []),
+          getArtifactRecords().catch(() => []),
+          getPatchRecords().catch(() => []),
+          getRepositoryChangeSummary().catch(() => null),
+          getTransformationHistory().catch(() => null),
+          getRepositoryIntelligence().catch(() => null),
+          getEngineeringKnowledge().catch(() => null),
+          getDecisionIntelligence().catch(() => null),
+          getEvaluationAccountabilityProjection().catch(() => null),
         ]);
       const sessionOverview = dashboard.latest_sessions;
       const nextSessionId = selectedSessionId ?? sessionOverview[0]?.session_id ?? sessions[0]?.id ?? null;
@@ -311,12 +401,25 @@ function useOperatorConsole() {
         agentAdapterDiagnostics,
         agentEventNormalization,
         agentInvocations: agentInvocations.invocations,
+        executionParticipants,
+        executionParticipantDiagnostics,
+        executionInvocations,
         selectedInvocationId: nextInvocationId,
         selectedInvocationSummary: null,
         selectedInvocationHistory: null,
         skillRegistry,
         workingMemory: nextWorkingMemory,
         repositoryMemory,
+        artifactMemory,
+        decisionMemory,
+        artifactRecords,
+        patchRecords,
+        repositoryChangeSummary,
+        transformationHistory,
+        repositoryIntelligence,
+        engineeringKnowledge,
+        decisionIntelligence,
+        evaluationAccountability,
       });
       setState(status || dashboard.latest_sessions.length || providerObservability || providerHealth ? 'ready' : 'empty');
       if (nextSessionId) await loadSelectedSession(nextSessionId);
@@ -345,12 +448,25 @@ function useOperatorConsole() {
         agentAdapterDiagnostics: null,
         agentEventNormalization: null,
         agentInvocations: [],
+        executionParticipants: [],
+        executionParticipantDiagnostics: null,
+        executionInvocations: [],
         selectedInvocationId: null,
         selectedInvocationSummary: null,
         selectedInvocationHistory: null,
         skillRegistry: null,
         workingMemory: null,
         repositoryMemory: null,
+        artifactMemory: [],
+        decisionMemory: [],
+        artifactRecords: [],
+        patchRecords: [],
+        repositoryChangeSummary: null,
+        transformationHistory: null,
+        repositoryIntelligence: null,
+        engineeringKnowledge: null,
+        decisionIntelligence: null,
+        evaluationAccountability: null,
       }));
       setError(err instanceof Error ? err.message : `Backend unavailable at ${apiBaseUrl}`);
     } finally {
@@ -367,14 +483,25 @@ function useOperatorConsole() {
     setLaunchState('running');
     setLaunchError(null);
     try {
+      const runtimeConfig = launchForm.runtimeConfig.trim()
+        ? JSON.parse(launchForm.runtimeConfig)
+        : {};
       const task = await createRuntimeTask({
         title: launchForm.taskTitle.trim() || launchForm.request.trim(),
       });
       await runRuntimeTask(task.id);
       const session = (await listRuntimeSessions()).find((item) => item.task_id === task.id) ?? null;
+      const requestPayload = [
+        `Engineering task: ${launchForm.request.trim()}`,
+        launchForm.spec.trim() ? `Specification:\n${launchForm.spec.trim()}` : null,
+        launchForm.context.trim() ? `Context documents:\n${launchForm.context.trim()}` : null,
+        `Runtime config:\n${JSON.stringify(runtimeConfig, null, 2)}`,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join('\n\n');
       const response = await runAgentLoop({
         session_id: session?.id ?? task.id,
-        user_request: launchForm.request.trim(),
+        user_request: requestPayload,
         max_iterations: Number(launchForm.maxIterations || '5'),
         workspace_id: data.activeWorkspace?.workspace_id ?? undefined,
         provider_id: launchForm.providerId.trim() || undefined,
@@ -391,6 +518,20 @@ function useOperatorConsole() {
     }
   };
 
+  const controlTask = async (taskId: string, action: 'interrupt' | 'stop') => {
+    setWorkflowError(null);
+    try {
+      if (action === 'interrupt') {
+        await interruptRuntimeTask(taskId);
+      } else {
+        await stopRuntimeTask(taskId);
+      }
+      await refresh();
+    } catch (err) {
+      setWorkflowError(err instanceof Error ? err.message : `${action} failed.`);
+    }
+  };
+
   const submitInvocation = async () => {
     try {
       const metadata = invocationForm.metadata.trim() ? JSON.parse(invocationForm.metadata) : {};
@@ -404,6 +545,31 @@ function useOperatorConsole() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invocation creation failed.');
     }
+  };
+
+  const submitExecutionInvocation = async (capabilityId: string) => {
+    const created = await createExecutionInvocation(capabilityId.trim());
+    setData((current) => ({
+      ...current,
+      executionInvocations: [created, ...current.executionInvocations],
+    }));
+  };
+
+  const advanceExecutionInvocation = async (invocationId: string, action: 'start' | 'complete' | 'cancel' | 'interrupt') => {
+    const next =
+      action === 'start'
+        ? await startExecutionInvocation(invocationId)
+        : action === 'complete'
+          ? await completeExecutionInvocation(invocationId, { inspected_from: 'desktop-console' })
+          : action === 'cancel'
+            ? await cancelExecutionInvocation(invocationId)
+            : await interruptExecutionInvocation(invocationId);
+    setData((current) => ({
+      ...current,
+      executionInvocations: current.executionInvocations.map((item) =>
+        item.invocation_id === invocationId ? next : item,
+      ),
+    }));
   };
 
   React.useEffect(() => {
@@ -430,9 +596,13 @@ function useOperatorConsole() {
     launchResult,
     launchTask,
     submitLaunch,
+    workflowError,
+    controlTask,
     invocationForm,
     setInvocationForm,
     submitInvocation,
+    submitExecutionInvocation,
+    advanceExecutionInvocation,
   };
 }
 
@@ -443,7 +613,7 @@ function App() {
     c.data.selectedSession ?? c.data.sessionOverview.find((session) => session.session_id === c.selectedSessionId) ?? null;
   const pendingApprovals = c.data.sessionOverview.filter((session) => session.pending_approval);
   const mockAdapter = c.data.agentAdapters.find(isMockAgentAdapter) ?? null;
-  const hasData = Boolean(c.data.dashboard || c.data.status || c.data.providerObservability || c.data.skillRegistry);
+  const hasData = Boolean(c.data.dashboard || c.data.status || c.data.providerObservability || c.data.skillRegistry || c.data.repositoryIntelligence || c.data.evaluationAccountability);
   const backendUnavailable = c.state === 'error' && !hasData;
 
   const selectSession = (sessionId: string) => {
@@ -527,6 +697,9 @@ function App() {
                   <form className="launch-form" onSubmit={(event: { preventDefault(): void }) => { event.preventDefault(); void c.submitLaunch(); }}>
                     <label><span>Task title</span><input value={c.launchForm.taskTitle} onChange={(event: { target: { value: string } }) => c.setLaunchForm((current) => ({ ...current, taskTitle: event.target.value }))} placeholder="operator session task" /></label>
                     <label><span>Task request</span><textarea value={c.launchForm.request} rows={4} onChange={(event: { target: { value: string } }) => c.setLaunchForm((current) => ({ ...current, request: event.target.value }))} /></label>
+                    <label><span>Specification</span><textarea value={c.launchForm.spec} rows={4} onChange={(event: { target: { value: string } }) => c.setLaunchForm((current) => ({ ...current, spec: event.target.value }))} placeholder="Acceptance criteria, implementation notes, or engineering constraints." /></label>
+                    <label><span>Context documents</span><textarea value={c.launchForm.context} rows={4} onChange={(event: { target: { value: string } }) => c.setLaunchForm((current) => ({ ...current, context: event.target.value }))} placeholder="Paste design docs, issue summaries, or repository context." /></label>
+                    <label><span>Runtime config</span><textarea value={c.launchForm.runtimeConfig} rows={5} onChange={(event: { target: { value: string } }) => c.setLaunchForm((current) => ({ ...current, runtimeConfig: event.target.value }))} /></label>
                     <div className="launch-grid">
                       <label><span>Workspace</span><input value={c.data.activeWorkspace?.name ?? 'active workspace'} readOnly /></label>
                       <label><span>Provider</span><input value={c.launchForm.providerId} onChange={(event: { target: { value: string } }) => c.setLaunchForm((current) => ({ ...current, providerId: event.target.value }))} /></label>
@@ -549,8 +722,15 @@ function App() {
                         <div><dt>Iterations</dt><dd>{c.launchResult.iterations_used}</dd></div>
                         <div><dt>Answer</dt><dd>{c.launchResult.final_answer ?? c.launchResult.error ?? 'Pending'}</dd></div>
                       </dl>
+                      {c.launchTask?.id ? (
+                        <div className="launch-actions">
+                          <button type="button" className="secondary-button" onClick={() => void c.controlTask(c.launchTask!.id, 'interrupt')}>Interrupt task</button>
+                          <button type="button" className="secondary-button danger-button" onClick={() => void c.controlTask(c.launchTask!.id, 'stop')}>Stop task</button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
+                  {c.workflowError ? <p className="empty error-copy">{c.workflowError}</p> : null}
                 </StateFrame>
               </Panel>
             </section>
@@ -776,6 +956,30 @@ function App() {
                   </ul>
                 </StateFrame>
               </Panel>
+              <Panel title="Execution Participants">
+                <StateFrame state={c.data.executionParticipants.length ? 'ready' : c.state} loading="Loading execution participants." empty="No execution participants returned." error={c.error ?? 'Execution participant registry unavailable.'}>
+                  <div className="details">
+                    <div><dt>Total participants</dt><dd>{c.data.executionParticipantDiagnostics?.total_participants ?? c.data.executionParticipants.length}</dd></div>
+                    <div><dt>Registry status</dt><dd>{c.data.executionParticipantDiagnostics?.status ?? 'unknown'}</dd></div>
+                    <div><dt>Capability route count</dt><dd>{Object.keys(c.data.executionParticipantDiagnostics?.kinds ?? {}).length}</dd></div>
+                    <div><dt>Warnings</dt><dd>{c.data.executionParticipantDiagnostics?.warnings.length ?? 0}</dd></div>
+                  </div>
+                  <ul className="catalog-list">
+                    {c.data.executionParticipants.map((participant) => (
+                      <li key={participant.participant_id} className="catalog-item">
+                        <div className="timeline-row"><strong>{participant.display_name}</strong><span>{participant.kind}</span></div>
+                        <p className="session-meta">{participant.participant_id} · {participant.version} · {participant.lifecycle}</p>
+                        <p className="request-text">{participant.availability}</p>
+                        <dl className="details">
+                          <div><dt>Capabilities</dt><dd>{participant.capabilities.map((capability) => capability.capability_id).join(', ') || 'none'}</dd></div>
+                          <div><dt>Health</dt><dd>{participant.health}</dd></div>
+                          <div><dt>Operations</dt><dd>{participant.supported_operations.join(', ') || 'none'}</dd></div>
+                        </dl>
+                      </li>
+                    ))}
+                  </ul>
+                </StateFrame>
+              </Panel>
               <Panel title="Agent Invocations">
                 <StateFrame state={c.data.agentInvocations.length ? 'ready' : c.state} loading="Loading agent invocations." empty="No agent invocations returned." error={c.error ?? 'Agent invocations unavailable.'}>
                   <ul className="session-list">
@@ -802,6 +1006,34 @@ function App() {
                     </div>
                   </form>
                 ) : null}
+              </Panel>
+              <Panel title="Execution Invocations">
+                <StateFrame state={c.data.executionInvocations.length ? 'ready' : c.state} loading="Loading execution invocations." empty="No execution invocations returned." error={c.error ?? 'Execution invocation history unavailable.'}>
+                  <ul className="session-list">
+                    {c.data.executionInvocations.map((invocation) => (
+                      <li key={invocation.invocation_id}>
+                        <button type="button" className={invocation.invocation_id === c.selectedInvocationId ? 'selected' : ''} onClick={() => void c.loadSelectedInvocation(invocation.invocation_id)}>
+                          <strong>{invocation.invocation_id}</strong>
+                          <span>{invocation.state}</span>
+                        </button>
+                        <p className="session-meta">{invocation.participant_id} · {invocation.capability_id}</p>
+                        <div className="launch-actions">
+                          <button type="button" className="secondary-button" onClick={() => void c.advanceExecutionInvocation(invocation.invocation_id, 'start')}>Start</button>
+                          <button type="button" className="secondary-button" onClick={() => void c.advanceExecutionInvocation(invocation.invocation_id, 'complete')}>Complete</button>
+                          <button type="button" className="secondary-button danger-button" onClick={() => void c.advanceExecutionInvocation(invocation.invocation_id, 'interrupt')}>Interrupt</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <form className="launch-form" onSubmit={(event: { preventDefault(): void }) => { event.preventDefault(); void c.submitExecutionInvocation(c.invocationForm.capabilityId || 'approval'); }}>
+                    <h3>Launch governed invocation</h3>
+                    <label><span>Capability id</span><input value={c.invocationForm.capabilityId} onChange={(event: { target: { value: string } }) => c.setInvocationForm((current) => ({ ...current, capabilityId: event.target.value }))} placeholder="approval" /></label>
+                    <div className="launch-actions">
+                      <button type="submit" className="secondary-button">Create governed invocation</button>
+                      <button type="button" className="secondary-button danger-button" onClick={() => c.selectedInvocationId && void c.advanceExecutionInvocation(c.selectedInvocationId, 'cancel')}>Cancel selected</button>
+                    </div>
+                  </form>
+                </StateFrame>
               </Panel>
             </section>
           ) : null}
@@ -855,6 +1087,177 @@ function App() {
                   </dl>
                   <p className="request-text">{c.data.repositoryMemory?.summary ?? 'n/a'}</p>
                 </StateFrame>
+              </Panel>
+            </section>
+          ) : null}
+
+          {view === 'repository-intelligence' ? (
+            <section className="console-grid">
+              <Panel title="Repository Intelligence">
+                <StateFrame state={c.data.repositoryIntelligence ? 'ready' : c.state} loading="Loading repository intelligence." empty="No repository intelligence returned yet." error={c.error ?? 'Repository intelligence unavailable.'}>
+                  <dl className="details">
+                    <div><dt>Repository</dt><dd>{c.data.repositoryIntelligence?.repository_id ?? 'n/a'}</dd></div>
+                    <div><dt>Generated</dt><dd>{c.data.repositoryIntelligence?.generated_at ?? 'n/a'}</dd></div>
+                    <div><dt>Modules</dt><dd>{c.data.repositoryIntelligence?.module_map.length ?? 0}</dd></div>
+                    <div><dt>Evidence</dt><dd>{c.data.repositoryIntelligence?.evidence_sources.join(', ') ?? 'n/a'}</dd></div>
+                  </dl>
+                  <p className="request-text">{c.data.repositoryIntelligence?.architecture_summary ?? 'n/a'}</p>
+                </StateFrame>
+              </Panel>
+              <Panel title="Inventory">
+                <ul className="timeline">
+                  {c.data.repositoryIntelligence?.runtime_inventory.map((item) => (
+                    <li key={item.name}>
+                      <div className="timeline-row"><strong>{item.name}</strong><span>{item.status}</span></div>
+                      <p>{JSON.stringify(item.metadata)}</p>
+                    </li>
+                  )) ?? null}
+                </ul>
+              </Panel>
+            </section>
+          ) : null}
+
+          {view === 'engineering-knowledge' ? (
+            <section className="console-grid">
+              <Panel title="Engineering Knowledge">
+                <StateFrame state={c.data.engineeringKnowledge ? 'ready' : c.state} loading="Loading engineering knowledge." empty="No engineering knowledge returned yet." error={c.error ?? 'Engineering knowledge unavailable.'}>
+                  <dl className="details">
+                    <div><dt>Generated</dt><dd>{c.data.engineeringKnowledge?.generated_at ?? 'n/a'}</dd></div>
+                    <div><dt>Entries</dt><dd>{c.data.engineeringKnowledge?.entries.length ?? 0}</dd></div>
+                  </dl>
+                </StateFrame>
+              </Panel>
+              <Panel title="Reusable Knowledge">
+                <ul className="timeline">
+                  {c.data.engineeringKnowledge?.entries.map((entry) => (
+                    <li key={entry.knowledge_id}>
+                      <div className="timeline-row"><strong>{entry.title}</strong><span>{entry.category}</span></div>
+                      <p>{entry.summary}</p>
+                      <p className="session-meta">{entry.evidence.join(', ')}</p>
+                    </li>
+                  )) ?? null}
+                </ul>
+              </Panel>
+            </section>
+          ) : null}
+
+          {view === 'transformation' ? (
+            <section className="console-grid">
+              <Panel title="Lifecycle Summary">
+                <StateFrame state={c.data.transformationHistory ? 'ready' : c.state} loading="Loading transformation history." empty="No transformation history returned yet." error={c.error ?? 'Transformation history unavailable.'}>
+                  <dl className="details">
+                    <div><dt>Events</dt><dd>{c.data.transformationHistory?.summary.total_events ?? 0}</dd></div>
+                    <div><dt>Failures</dt><dd>{c.data.transformationHistory?.summary.failed_attempts ?? 0}</dd></div>
+                    <div><dt>Sessions</dt><dd>{c.data.transformationHistory?.summary.sessions_with_transformations ?? 0}</dd></div>
+                    <div><dt>Patterns</dt><dd>{c.data.transformationHistory?.summary.repeated_patterns.length ?? 0}</dd></div>
+                  </dl>
+                </StateFrame>
+              </Panel>
+              <Panel title="Repository Change Summary">
+                <StateFrame state={c.data.repositoryChangeSummary ? 'ready' : c.state} loading="Loading repository change summary." empty="No repository change summary returned yet." error={c.error ?? 'Repository change summary unavailable.'}>
+                  <dl className="details">
+                    <div><dt>Branch</dt><dd>{c.data.repositoryChangeSummary?.branch ?? 'n/a'}</dd></div>
+                    <div><dt>Head</dt><dd>{c.data.repositoryChangeSummary?.head_commit ?? 'n/a'}</dd></div>
+                    <div><dt>Dirty</dt><dd>{String(c.data.repositoryChangeSummary?.dirty_workspace ?? false)}</dd></div>
+                    <div><dt>Checkpoint</dt><dd>{c.data.repositoryChangeSummary?.checkpoint_commit ?? 'n/a'}</dd></div>
+                  </dl>
+                  <p className="session-meta">{c.data.repositoryChangeSummary?.warnings.join(', ') ?? 'No warnings.'}</p>
+                </StateFrame>
+              </Panel>
+              <Panel title="Patches">
+                <ul className="timeline">
+                  {c.data.patchRecords.slice(0, 10).map((patch) => (
+                    <li key={patch.id}>
+                      <div className="timeline-row"><strong>{patch.id}</strong><span>{patch.status}</span></div>
+                      <p>{patch.affected_files.join(', ') || 'No affected files recorded.'}</p>
+                      <p className="session-meta">{patch.validation_result ?? 'no validation'} · {patch.rollback_reference ?? 'no rollback reference'}</p>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+              <Panel title="Artifacts">
+                <ul className="timeline">
+                  {c.data.artifactRecords.slice(0, 10).map((artifact) => (
+                    <li key={artifact.id}>
+                      <div className="timeline-row"><strong>{artifact.path}</strong><span>{artifact.type}</span></div>
+                      <p>{artifact.producer ?? 'unknown producer'}</p>
+                      <p className="session-meta">{artifact.session_id ?? 'no session'} · {artifact.checksum ?? 'no checksum'}</p>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+              <Panel title="Transformation Timeline">
+                <ul className="timeline">
+                  {c.data.transformationHistory?.items.slice(0, 20).map((item) => (
+                    <li key={`${item.timestamp}-${item.event_id ?? item.stage}`}>
+                      <div className="timeline-row"><strong>{item.stage}</strong><span>{item.status}</span></div>
+                      <p>{item.summary}</p>
+                      <p className="session-meta">{item.proposal_id ?? item.patch_id ?? item.artifact_id ?? 'unlinked'}</p>
+                    </li>
+                  )) ?? null}
+                </ul>
+              </Panel>
+            </section>
+          ) : null}
+
+          {view === 'decision-intelligence' ? (
+            <section className="console-grid">
+              <Panel title="Decision Intelligence">
+                <StateFrame state={c.data.decisionIntelligence ? 'ready' : c.state} loading="Loading decision intelligence." empty="No decision intelligence returned yet." error={c.error ?? 'Decision intelligence unavailable.'}>
+                  <dl className="details">
+                    <div><dt>Generated</dt><dd>{c.data.decisionIntelligence?.generated_at ?? 'n/a'}</dd></div>
+                    <div><dt>Recurring decisions</dt><dd>{c.data.decisionIntelligence?.recurring_decisions.length ?? 0}</dd></div>
+                    <div><dt>Proposal outcomes</dt><dd>{c.data.decisionIntelligence?.proposal_outcomes.length ?? 0}</dd></div>
+                  </dl>
+                </StateFrame>
+              </Panel>
+              <Panel title="Decision Patterns">
+                <ul className="timeline">
+                  {c.data.decisionIntelligence?.recurring_decisions.map((decision) => (
+                    <li key={decision.decision_key}>
+                      <div className="timeline-row"><strong>{decision.decision_key}</strong><span>{decision.occurrences}x</span></div>
+                      <p>{decision.rationale}</p>
+                      <p className="session-meta">failures: {decision.failures}</p>
+                    </li>
+                  )) ?? null}
+                </ul>
+              </Panel>
+            </section>
+          ) : null}
+
+          {view === 'evaluation-accountability' ? (
+            <section className="console-grid">
+              <Panel title="Evaluation Dashboard">
+                <StateFrame state={c.data.evaluationAccountability ? 'ready' : c.state} loading="Loading evaluation accountability." empty="No accountability data returned yet." error={c.error ?? 'Evaluation accountability unavailable.'}>
+                  <dl className="details">
+                    <div><dt>Scenarios</dt><dd>{c.data.evaluationAccountability?.scenarios.length ?? 0}</dd></div>
+                    <div><dt>Runs</dt><dd>{c.data.evaluationAccountability?.runs.length ?? 0}</dd></div>
+                    <div><dt>Scorecards</dt><dd>{c.data.evaluationAccountability?.scorecards.length ?? 0}</dd></div>
+                    <div><dt>Regressions</dt><dd>{c.data.evaluationAccountability?.regressions.regressed_count ?? 0}</dd></div>
+                  </dl>
+                </StateFrame>
+              </Panel>
+              <Panel title="Scenario Browser">
+                <ul className="timeline">
+                  {c.data.evaluationAccountability?.scenarios.map((scenario) => (
+                    <li key={scenario.scenario_id}>
+                      <div className="timeline-row"><strong>{scenario.title}</strong><span>{scenario.target_type}</span></div>
+                      <p>{scenario.purpose}</p>
+                      <p className="session-meta">{scenario.risk_level} · v{scenario.version} · {scenario.tags.join(', ')}</p>
+                    </li>
+                  )) ?? null}
+                </ul>
+              </Panel>
+              <Panel title="Regression View">
+                <ul className="timeline">
+                  {c.data.evaluationAccountability?.regressions.findings.map((finding) => (
+                    <li key={`${finding.target_type}-${finding.target_id}-${String(finding.comparison_run_id)}`}>
+                      <div className="timeline-row"><strong>{String(finding.status)}</strong><span>{finding.target_type}</span></div>
+                      <p>{String(finding.target_id)} · delta {String(finding.score_delta ?? 'n/a')}</p>
+                      <p className="session-meta">{String(finding.signature)}</p>
+                    </li>
+                  )) ?? null}
+                </ul>
               </Panel>
             </section>
           ) : null}

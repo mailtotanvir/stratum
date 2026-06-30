@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class SkillStep(BaseModel):
     instruction: str = Field(min_length=1)
     rationale: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillDependency(BaseModel):
+    skill_id: str = Field(min_length=1)
+    minimum_version: int = Field(ge=1, default=1)
 
 
 class SkillManifest(BaseModel):
@@ -19,6 +25,8 @@ class SkillManifest(BaseModel):
     category: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)
     steps: list[SkillStep] = Field(default_factory=list)
+    dependencies: list[SkillDependency] = Field(default_factory=list)
+    parameters: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("skill_id", "name", "description", "methodology", "category")
@@ -42,11 +50,23 @@ class SkillRegistryEntry(BaseModel):
     version: int = Field(ge=1)
     category: str = Field(min_length=1)
     source: str = Field(min_length=1)
+    dependency_count: int = Field(ge=0)
+    parameter_count: int = Field(ge=0)
+
+
+class SkillManifestDiagnostics(BaseModel):
+    skill_id: str = Field(min_length=1)
+    status: Literal["healthy", "degraded"]
+    warnings: list[str] = Field(default_factory=list)
+    dependency_ids: list[str] = Field(default_factory=list)
+    parameter_names: list[str] = Field(default_factory=list)
 
 
 class SkillRegistryCatalog(BaseModel):
     skills: list[SkillRegistryEntry]
     registered_skills_total: int = Field(ge=0)
+    categories: list[str] = Field(default_factory=list)
+    version_summary: dict[str, int] = Field(default_factory=dict)
 
 
 class SkillRegistryDiagnostic(BaseModel):
@@ -54,5 +74,5 @@ class SkillRegistryDiagnostic(BaseModel):
     total_skills: int = Field(ge=0)
     duplicate_skill_ids: list[str] = Field(default_factory=list)
     invalid_skill_ids: list[str] = Field(default_factory=list)
+    missing_dependency_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
-

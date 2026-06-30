@@ -6,6 +6,7 @@ from typing import Any
 from app.models.skill import (
     Skill,
     SkillManifest,
+    SkillManifestDiagnostics,
     SkillRegistryCatalog,
     SkillRegistryDiagnostic,
     SkillRegistryEntry,
@@ -43,27 +44,47 @@ class SkillRegistryService:
         return SkillRegistryCatalog(
             skills=[self._entry(skill) for skill in self._sorted_skills()],
             registered_skills_total=len(self._skills),
+            categories=sorted({skill.manifest.category for skill in self._skills.values()}),
+            version_summary=self._version_summary(),
         )
 
     def diagnostics(self) -> SkillRegistryDiagnostic:
         invalid: list[str] = []
+        missing_dependencies: list[str] = []
+        registry = self._skills
         for skill in self._skills.values():
             try:
                 SkillManifest.model_validate(skill.manifest.model_dump())
+                for dependency in skill.manifest.dependencies:
+                    if dependency.skill_id not in registry:
+                        missing_dependencies.append(dependency.skill_id)
             except Exception:
                 invalid.append(skill.manifest.skill_id)
-        status = "degraded" if invalid else "healthy"
-        warnings = (
-            ["Invalid skill definitions were detected."]
-            if invalid
-            else []
-        )
+        status = "degraded" if invalid or missing_dependencies else "healthy"
+        warnings = []
+        if invalid:
+            warnings.append("Invalid skill definitions were detected.")
+        if missing_dependencies:
+            warnings.append("Missing skill dependencies were detected.")
         return SkillRegistryDiagnostic(
             status=status,
             total_skills=len(self._skills),
             duplicate_skill_ids=[],
             invalid_skill_ids=sorted(set(invalid)),
+            missing_dependency_ids=sorted(set(missing_dependencies)),
             warnings=warnings,
+        )
+
+    def diagnostics_for(self, skill_id: str) -> SkillManifestDiagnostics:
+        skill = self._skills[skill_id]
+        return SkillManifestDiagnostics(
+            skill_id=skill_id,
+            status="healthy",
+            warnings=[],
+            dependency_ids=[
+                dependency.skill_id for dependency in skill.manifest.dependencies
+            ],
+            parameter_names=sorted(skill.manifest.parameters.keys()),
         )
 
     def _sorted_skills(self) -> list[Skill]:
@@ -83,8 +104,15 @@ class SkillRegistryService:
             version=skill.manifest.version,
             category=skill.manifest.category,
             source=skill.source,
+            dependency_count=len(skill.manifest.dependencies),
+            parameter_count=len(skill.manifest.parameters),
         )
+
+    def _version_summary(self) -> dict[str, int]:
+        summary: dict[str, int] = {}
+        for skill in self._skills.values():
+            summary[skill.manifest.skill_id] = skill.manifest.version
+        return summary
 
 
 skill_registry_service = SkillRegistryService()
-

@@ -13,10 +13,8 @@ class SkillLoaderService:
     def list_skill_manifests(self) -> list[Skill]:
         if not self._root.exists():
             return []
-        return [
-            self._load_manifest(path)
-            for path in sorted(self._root.rglob("skill.json"))
-        ]
+        paths = sorted(self._root.rglob("skill.json"))
+        return [self._load_manifest(path) for path in paths]
 
     def _load_manifest(self, manifest_path: Path) -> Skill:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -27,4 +25,3 @@ class SkillLoaderService:
 
 
 skill_loader_service = SkillLoaderService()
-

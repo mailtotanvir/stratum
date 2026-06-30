@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import { getRuntimeApiBaseUrl } from './api/config';
 import {
   getRuntimeDashboard,
+  getRuntimeSessionGovernance,
   respondToAgentLoopApproval,
+  continueAgentLoopApproval,
+  resumeAgentLoopApproval,
   type RuntimeDashboard,
+  type RuntimeGovernanceSnapshot,
   type RuntimeSessionOverview,
 } from './api/runtime';
 
@@ -42,6 +46,7 @@ export function ApprovalQueue() {
   const [dashboard, setDashboard] = useState<RuntimeDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [governanceBySession, setGovernanceBySession] = useState<Record<string, RuntimeGovernanceSnapshot>>({});
   const [actionState, setActionState] = useState<ApprovalActionState>({
     approvalId: null,
     kind: null,
@@ -58,6 +63,14 @@ export function ApprovalQueue() {
     try {
       const dashboardData = await getRuntimeDashboard();
       setDashboard(dashboardData);
+      const snapshots = await Promise.all(
+        dashboardData.latest_sessions
+          .filter((session) => session.pending_approval || session.status === 'interrupted')
+          .map(async (session) => [session.session_id, await getRuntimeSessionGovernance(session.session_id).catch(() => null)] as const),
+      );
+      setGovernanceBySession(
+        Object.fromEntries(snapshots.filter((entry): entry is readonly [string, RuntimeGovernanceSnapshot] => entry[1] !== null)),
+      );
       setState('ready');
     } catch (err) {
       setDashboard(null);
@@ -84,6 +97,30 @@ export function ApprovalQueue() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Approval action failed.');
+    } finally {
+      setActionState({ approvalId: null, kind: null });
+    }
+  };
+
+  const handleResume = async (approvalId: string) => {
+    setActionState({ approvalId, kind: 'approve' });
+    try {
+      await resumeAgentLoopApproval(approvalId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Resume action failed.');
+    } finally {
+      setActionState({ approvalId: null, kind: null });
+    }
+  };
+
+  const handleContinue = async (approvalId: string) => {
+    setActionState({ approvalId, kind: 'approve' });
+    try {
+      await continueAgentLoopApproval(approvalId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Continue action failed.');
     } finally {
       setActionState({ approvalId: null, kind: null });
     }
@@ -167,6 +204,19 @@ export function ApprovalQueue() {
                         <dd>{session.final_answer ?? session.error ?? 'Waiting for decision'}</dd>
                       </div>
                     </dl>
+                    {governanceBySession[session.session_id] ? (
+                      <div className="governance-history">
+                        <h3>Approval history</h3>
+                        <ul className="timeline">
+                          {governanceBySession[session.session_id].approval_history.map((entry) => (
+                            <li key={`${session.session_id}-${entry.timestamp}-${entry.status}`}>
+                              <strong>{entry.status}</strong>
+                              <span>{entry.message}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="approval-actions">
                     <button
@@ -192,6 +242,30 @@ export function ApprovalQueue() {
                       }}
                     >
                       {isBusy && actionState.kind === 'reject' ? 'Rejecting' : 'Reject'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={isBusy || !session.pending_approval_id}
+                      onClick={() => {
+                        if (session.pending_approval_id) {
+                          void handleResume(session.pending_approval_id);
+                        }
+                      }}
+                    >
+                      Resume
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={isBusy || !session.pending_approval_id}
+                      onClick={() => {
+                        if (session.pending_approval_id) {
+                          void handleContinue(session.pending_approval_id);
+                        }
+                      }}
+                    >
+                      Continue
                     </button>
                   </div>
                 </li>

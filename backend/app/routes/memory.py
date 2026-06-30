@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
-from app.models.memory import RepositoryMemory, SessionMemory, WorkingMemory
+from app.models.memory import (
+    ArtifactMemory,
+    DecisionMemory,
+    RepositoryMemory,
+    SessionMemory,
+    WorkingMemory,
+)
 from app.services.memory_reconstruction_service import memory_reconstruction_service
 
 router = APIRouter()
@@ -22,3 +28,13 @@ def get_session_memory(session_id: str) -> SessionMemory:
 @router.get("/runtime/memory/repository")
 def get_repository_memory() -> RepositoryMemory:
     return memory_reconstruction_service.reconstruct_repository_memory()
+
+
+@router.get("/runtime/memory/artifacts")
+def get_artifact_memory() -> list[ArtifactMemory]:
+    return memory_reconstruction_service.reconstruct_artifact_memory()
+
+
+@router.get("/runtime/memory/decisions")
+def get_decision_memory() -> list[DecisionMemory]:
+    return memory_reconstruction_service.reconstruct_decision_memory()
