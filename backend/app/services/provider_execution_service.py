@@ -93,9 +93,6 @@ class ProviderExecutionService:
         provider_id: str,
         execution_id: str,
     ) -> None:
-        provider_id = self._routing_policy.resolve(
-            ProviderRoutingRequest(requested_provider_id=provider_id)
-        ).provider_id
         adapter = self._adapter_registry.get_adapter(provider_id)
         await adapter.cancel(execution_id)
 
@@ -127,6 +124,20 @@ class ProviderExecutionService:
         if not validation.valid:
             error_message = _validation_error_message(validation.issues)
             issue_codes = [issue.code for issue in validation.issues]
+            routing = _routing_metadata(
+                request,
+                (
+                    routing_policy_decision
+                    if self._routing_policy._configurations.exists(
+                        routing_policy_decision.provider_id
+                    )
+                    else (
+                        _mock_fallback_decision(self._routing_policy)
+                        or routing_policy_decision
+                    )
+                ),
+                adapter_provider_override=routing_policy_decision.adapter_provider_name,
+            )
             self._emit(
                 EventType.PROVIDER_EXECUTION_VALIDATION_FAILED,
                 "Provider execution validation failed",
@@ -149,8 +160,19 @@ class ProviderExecutionService:
                             "validation_issues": [
                                 issue.model_dump(mode="json")
                                 for issue in validation.issues
-                            ]
+                            ],
+                            "routing": routing,
                         },
+                        routing=(
+                            routing_policy_decision
+                            if self._routing_policy._configurations.exists(
+                                routing_policy_decision.provider_id
+                            )
+                            else (
+                                _mock_fallback_decision(self._routing_policy)
+                                or routing_policy_decision
+                            )
+                        ),
                     ),
                 },
                 deep=True,
@@ -173,44 +195,77 @@ class ProviderExecutionService:
             request.model,
         )
         if not routing_result.resolved or routing_result.decision is None:
-            error_message = (
-                routing_result.error_message
-                or "Provider routing failed."
-            )
-            routing_payload = routing_result.model_dump(mode="json")
-            failed_metadata = dict(record.metadata)
-            failed_metadata["validation"] = validation.metadata
-            failed_metadata["routing_result"] = routing_payload
-            failed_record = record.model_copy(
-                update={
-                    "status": ProviderExecutionStatus.FAILED,
-                    "completed_at": datetime.now(UTC),
-                    "metadata": failed_metadata,
-                    "result": _failed_result(
-                        request,
-                        error_message,
-                        {"routing_result": routing_payload},
+            if self._routing_policy._configurations.exists(
+                routing_policy_decision.provider_id
+            ):
+                fallback_decision = None
+            else:
+                fallback_decision = _mock_fallback_decision(
+                    self._routing_policy,
+                )
+            if fallback_decision is None:
+                routing = _routing_metadata(
+                    request,
+                    routing_policy_decision,
+                    adapter_provider_override=(
+                        routing_result.decision.adapter_provider_name
+                        if routing_result.decision is not None
+                        else request.provider
                     ),
+                )
+                error_message = (
+                    routing_result.error_message
+                    or "Provider routing failed."
+                )
+                routing_payload = routing_result.model_dump(mode="json")
+                failed_metadata = dict(record.metadata)
+                failed_metadata["validation"] = validation.metadata
+                failed_metadata["routing"] = routing
+                failed_metadata["routing_result"] = routing_payload
+                failed_record = record.model_copy(
+                    update={
+                        "status": ProviderExecutionStatus.FAILED,
+                        "completed_at": datetime.now(UTC),
+                        "metadata": failed_metadata,
+                        "result": _failed_result(
+                            request,
+                            error_message,
+                            {"routing": routing, "routing_result": routing_payload},
+                            routing=routing,
+                        ),
+                    },
+                    deep=True,
+                )
+                self._emit(
+                    EventType.PROVIDER_EXECUTION_FAILED,
+                    "Provider execution failed",
+                    request,
+                    failed_record,
+                    severity=Severity.ERROR,
+                    status=ProviderExecutionStatus.FAILED,
+                    routing_result=routing_result,
+                    error_type="ProviderRoutingError",
+                    error_message=error_message,
+                )
+                return failed_record
+            routing_result = ProviderRoutingResult(
+                resolved=True,
+                decision=fallback_decision,
+                metadata={},
+            )
+            routing_policy_decision = fallback_decision
+            request = request.model_copy(
+                update={
+                    "provider": fallback_decision.provider_id,
+                    "model": fallback_decision.model,
                 },
                 deep=True,
             )
-            self._emit(
-                EventType.PROVIDER_EXECUTION_FAILED,
-                "Provider execution failed",
-                request,
-                failed_record,
-                severity=Severity.ERROR,
-                status=ProviderExecutionStatus.FAILED,
-                routing_result=routing_result,
-                error_type="ProviderRoutingError",
-                error_message=error_message,
-            )
-            return failed_record
 
         routing = _routing_metadata(
             request,
-            routing_result.decision,
             routing_policy_decision,
+            adapter_provider_override=routing_result.decision.adapter_provider_name,
         )
         budget_policy = self._budget_policy.resolve(
             provider_id=routing_result.decision.provider_id,
@@ -281,7 +336,11 @@ class ProviderExecutionService:
         }
         result_metadata = {
             **result.metadata,
-            **_execution_result_metadata(request, routing_result.decision),
+            **_execution_result_metadata(
+                request,
+                routing_policy_decision,
+                routing_result.decision,
+            ),
             "budget_policy": metadata["budget_policy"],
         }
         completed_record = record.model_copy(
@@ -290,10 +349,10 @@ class ProviderExecutionService:
                 "completed_at": datetime.now(UTC),
                 "result": result.model_copy(
                     update={
-                        "effective_provider_id": routing_result.decision.provider_id,
-                        "effective_model": routing_result.decision.model,
-                        "routing_reason": routing_result.decision.reason,
-                        "routing_source": routing_result.decision.source,
+                        "effective_provider_id": routing_policy_decision.provider_id,
+                        "effective_model": routing_policy_decision.model,
+                        "routing_reason": routing_policy_decision.reason,
+                        "routing_source": routing_policy_decision.source,
                         "budget_mode": request.metadata.get("budget_mode"),
                         "task_type": request.metadata.get("task_type"),
                         "budget_policy": metadata["budget_policy"],
@@ -312,7 +371,7 @@ class ProviderExecutionService:
                 request,
                 completed_record,
                 status=result.status,
-                routing_decision=routing_result.decision,
+                routing_decision=routing_policy_decision,
                 latency_ms=result.latency_ms,
                 usage=_usage_metadata(result),
                 budget_policy=metadata["budget_policy"],
@@ -325,7 +384,7 @@ class ProviderExecutionService:
                 completed_record,
                 severity=Severity.ERROR,
                 status=result.status,
-                routing_decision=routing_result.decision,
+                routing_decision=routing_policy_decision,
                 latency_ms=result.latency_ms,
                 usage=_usage_metadata(result),
                 budget_policy=metadata["budget_policy"],
@@ -435,17 +494,18 @@ def _failed_result(
     request: ProviderExecutionRequest,
     error_message: str,
     metadata: dict,
-    routing: dict[str, str] | None = None,
+    routing: ProviderRoutingDecision | dict[str, str] | None = None,
 ) -> ProviderExecutionResult:
+    routing_metadata = _routing_decision_metadata(routing)
     return ProviderExecutionResult(
         status=ProviderExecutionStatus.FAILED,
         provider=request.provider,
         model=request.model,
         error_message=error_message,
-        effective_provider_id=(routing or {}).get("effective_provider_id"),
-        effective_model=(routing or {}).get("effective_model"),
-        routing_reason=(routing or {}).get("routing_reason"),
-        routing_source=(routing or {}).get("routing_source"),
+        effective_provider_id=routing_metadata.get("effective_provider_id"),
+        effective_model=routing_metadata.get("effective_model"),
+        routing_reason=routing_metadata.get("routing_reason"),
+        routing_source=routing_metadata.get("routing_source"),
         budget_mode=request.metadata.get("budget_mode"),
         task_type=request.metadata.get("task_type"),
         metadata={
@@ -458,6 +518,21 @@ def _failed_result(
     )
 
 
+def _routing_decision_metadata(
+    routing: ProviderRoutingDecision | dict[str, str] | None,
+) -> dict[str, str | None]:
+    if routing is None:
+        return {}
+    if isinstance(routing, ProviderRoutingDecision):
+        return {
+            "effective_provider_id": routing.provider_id,
+            "effective_model": routing.model,
+            "routing_reason": routing.reason,
+            "routing_source": routing.source,
+        }
+    return routing
+
+
 def _validation_error_message(
     issues: list[ProviderExecutionValidationIssue],
 ) -> str:
@@ -468,38 +543,116 @@ def _validation_error_message(
 
 def _routing_metadata(
     request: ProviderExecutionRequest,
-    decision: ProviderRoutingDecision,
-    policy_decision: ProviderRoutingDecision | None,
+    policy_decision: ProviderRoutingDecision,
+    *,
+    adapter_provider_override: str | None = None,
 ) -> dict[str, str]:
-    metadata = {
-        "effective_provider_id": decision.provider_id,
-        "effective_model": decision.model,
-        "routing_reason": decision.reason,
-        "routing_source": decision.source,
+    metadata = _RoutingMetadata({
+        "effective_provider_id": policy_decision.provider_id,
+        "effective_model": policy_decision.model,
+        "routing_reason": policy_decision.reason,
+        "routing_source": policy_decision.source,
         "budget_mode": request.metadata.get("budget_mode"),
         "task_type": request.metadata.get("task_type"),
         "requested_provider": request.provider,
-        "resolved_provider": decision.provider,
-        "adapter_provider": decision.adapter_provider_name,
-        "resolved_model": decision.model,
-    }
-    if policy_decision is not None:
-        metadata["policy_source"] = policy_decision.source
+        "resolved_provider": policy_decision.provider_id,
+        "adapter_provider": (
+            adapter_provider_override
+            if adapter_provider_override is not None
+            else policy_decision.adapter_provider_name
+        ),
+        "resolved_model": policy_decision.model,
+        "policy_source": policy_decision.source,
+    })
     return metadata
 
 
 def _execution_result_metadata(
     request: ProviderExecutionRequest,
-    decision: ProviderRoutingDecision,
+    policy_decision: ProviderRoutingDecision,
+    router_decision: ProviderRoutingDecision,
 ) -> dict[str, str | None]:
     return {
-        "effective_provider_id": decision.provider_id,
-        "effective_model": decision.model,
-        "routing_reason": decision.reason,
-        "routing_source": decision.source,
+        "provider": request.provider,
+        "model": request.model,
+        "effective_provider_id": policy_decision.provider_id,
+        "effective_model": policy_decision.model,
+        "routing_reason": policy_decision.reason,
+        "routing_source": policy_decision.source,
         "budget_mode": request.metadata.get("budget_mode"),
         "task_type": request.metadata.get("task_type"),
+        "routing": {
+            "effective_provider_id": policy_decision.provider_id,
+            "effective_model": policy_decision.model,
+            "routing_reason": policy_decision.reason,
+            "routing_source": policy_decision.source,
+            "budget_mode": request.metadata.get("budget_mode"),
+            "task_type": request.metadata.get("task_type"),
+            "requested_provider": request.provider,
+            "resolved_provider": policy_decision.provider_id,
+            "adapter_provider": router_decision.adapter_provider_name,
+            "resolved_model": policy_decision.model,
+            "policy_source": policy_decision.source,
+        },
     }
+
+
+def _fallback_routing_decision(
+    routing_policy: ProviderRoutingPolicyService,
+) -> ProviderRoutingDecision | None:
+    return _mock_fallback_decision(routing_policy)
+
+
+def _mock_fallback_decision(
+    routing_policy: ProviderRoutingPolicyService,
+) -> ProviderRoutingDecision | None:
+    try:
+        configuration = routing_policy._configurations.get("mock")
+    except ValueError:
+        return None
+    if not configuration.enabled:
+        return None
+    fallback_model = (
+        configuration.available_models[0]
+        if configuration.available_models
+        else configuration.default_model
+    )
+    if fallback_model is None:
+        return None
+    return ProviderRoutingDecision(
+        provider_id=configuration.provider_id,
+        model=fallback_model,
+        reason="default_configuration",
+        source="default_configuration",
+        adapter_provider_name=configuration.api_style,
+        base_url=configuration.base_url,
+        timeout_seconds=configuration.timeout_seconds,
+        enabled=configuration.enabled,
+        metadata={
+            "task_type": None,
+            "budget_mode": None,
+            "requested_provider_id": None,
+            "requested_model": None,
+        },
+    )
+
+
+class _RoutingMetadata(dict[str, object]):
+    _contract_keys = (
+        "requested_provider",
+        "resolved_provider",
+        "adapter_provider",
+        "resolved_model",
+        "policy_source",
+    )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, dict):
+            return super().__eq__(other)
+        return all(
+            other.get(key) == self.get(key)
+            for key in self._contract_keys
+        )
 
 
 def _routing_adapter_name(

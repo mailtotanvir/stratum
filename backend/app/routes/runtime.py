@@ -74,6 +74,9 @@ from app.runtime.projection_registry import (
     ProjectionTypeNotFoundError,
     projection_registry,
 )
+from app.runtime.projection_visibility import (
+    PUBLIC_RUNTIME_PROJECTION_TYPES,
+)
 from app.runtime.python_async_runtime import python_async_runtime
 from app.runtime.work_loop import work_loop_service
 from app.services.artifact_service import ArtifactNotFoundError, artifact_service
@@ -146,11 +149,10 @@ from app.services.runtime_artifact_service import (
     runtime_artifact_service,
 )
 from app.services.runtime_workspace_artifact_service import (
+    RuntimeWorkspaceArtifactService,
     runtime_workspace_artifact_service,
 )
-from app.services.runtime_workspace_binding_service import (
-    runtime_workspace_binding_service,
-)
+from app.services.runtime_workspace_binding_service import RuntimeWorkspaceBindingService
 from app.services.runtime_execution_service import (
     RuntimeExecutionNotFoundError,
     runtime_execution_service,
@@ -258,8 +260,13 @@ class RuntimeWorkspaceCreateRequest(BaseModel):
 
 
 @router.get("/runtime/workspaces/binding", summary="Get active workspace binding status")
-def get_runtime_workspace_binding() -> RuntimeWorkspaceBindingStatus:
-    return runtime_workspace_binding_service.get_binding_status()
+def get_runtime_workspace_binding(
+    workspace: RuntimeWorkspaceService = Depends(get_runtime_workspace_service),
+) -> RuntimeWorkspaceBindingStatus:
+    return RuntimeWorkspaceBindingService(
+        workspace=workspace,
+        workspace_artifacts=RuntimeWorkspaceArtifactService(workspace=workspace),
+    ).get_binding_status()
 
 
 def to_runtime_execution(record: RuntimeExecutionRecord) -> RuntimeExecution:
@@ -741,7 +748,20 @@ def list_runtime_sessions(task_id: str | None = None) -> list[RuntimeSession]:
 @router.get("/runtime/projection-diagnostics")
 @router.get("/runtime/projections")
 def list_runtime_projection_types() -> RuntimeProjectionTypes:
-    projection_types = projection_registry.list_projection_types()
+    projection_types = [
+        projection_type
+        for projection_type in PUBLIC_RUNTIME_PROJECTION_TYPES
+        if projection_type in projection_registry.list_projection_types()
+    ]
+    schemas = [
+        projection_registry.get_schema(projection_type)
+        for projection_type in projection_types
+    ]
+    projections = [
+        status
+        for status in projection_lifecycle_service.projection_statuses()
+        if status.projection_name in projection_types
+    ]
     event_service.emit_event_sync(
         event_type=EventType.PROJECTION_REGISTRY_INSPECTED,
         message="Projection registry inspected",
@@ -753,8 +773,8 @@ def list_runtime_projection_types() -> RuntimeProjectionTypes:
     )
     return RuntimeProjectionTypes(
         projection_types=projection_types,
-        schemas=projection_registry.list_schemas(),
-        projections=projection_lifecycle_service.projection_statuses(),
+        schemas=schemas,
+        projections=projections,
     )
 
 

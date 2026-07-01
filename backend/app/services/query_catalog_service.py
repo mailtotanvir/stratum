@@ -7,6 +7,13 @@ from app.services.projection_registry_service import (
 )
 
 
+EXCLUDED_QUERY_PROJECTIONS = {
+    "repository_memory",
+    "session_memory",
+    "working_memory",
+}
+
+
 class QueryCatalogService:
     def __init__(
         self,
@@ -29,6 +36,7 @@ class QueryCatalogService:
                 persisted=True,
             )
             for entry in registry.projections
+            if entry.projection_name not in EXCLUDED_QUERY_PROJECTIONS
         ]
         return QueryCatalog(
             entries=entries,

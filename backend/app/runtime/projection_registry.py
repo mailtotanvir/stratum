@@ -110,9 +110,19 @@ class ProjectionRegistry:
         return self._schemas[projection_type].model_copy(deep=True)
 
     def list_schemas(self) -> list[ProjectionSchemaInfo]:
+        projection_types = [
+            projection_type
+            for projection_type in self.list_projection_types()
+            if projection_type
+            not in {
+                "repository_memory",
+                "session_memory",
+                "working_memory",
+            }
+        ]
         return [
             self.get_schema(projection_type)
-            for projection_type in self.list_projection_types()
+            for projection_type in projection_types
         ]
 
 

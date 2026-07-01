@@ -11,6 +11,7 @@ from app.models.evaluation_accountability import (
     RegressionFinding,
     RegressionSummary,
 )
+from app.models.projection import ProjectionMetadata
 from app.models.runtime_event import EventType
 from app.services.event_service import EventService, event_service
 
@@ -121,16 +122,19 @@ class EvaluationAccountabilityService:
         scorecards = self._scorecards(runs)
         regressions = self._regressions(runs)
         return EvaluationAccountabilityProjection(
-            metadata={
-                "projection_type": "evaluation_accountability",
-                "builder_name": "EvaluationAccountabilityService",
-                "reconstruction": {
+            metadata=ProjectionMetadata(
+                projection_type="evaluation_accountability",
+                schema_version=1,
+                builder_name="EvaluationAccountabilityService",
+                reconstruction={
                     "projection_type": "evaluation_accountability",
                     "reconstruction_source": "runtime_event_store",
                     "rebuildable": True,
                     "authoritative_source": "runtime_event_store",
                 },
-            },
+                built_at=datetime.now(UTC),
+                source="runtime_event_store",
+            ),
             scenarios=scenarios,
             runs=runs,
             scorecards=scorecards,

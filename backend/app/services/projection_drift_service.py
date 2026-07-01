@@ -13,6 +13,9 @@ from app.runtime.projection_registry import (
     ProjectionRegistry,
     projection_registry,
 )
+from app.runtime.projection_visibility import (
+    PUBLIC_RUNTIME_PROJECTION_TYPES,
+)
 from app.services.event_service import EventService, event_service
 from app.services.projection_replay_service import (
     ProjectionReplayService,
@@ -45,7 +48,9 @@ class ProjectionDriftService:
 
     def check_all(self) -> ProjectionDriftReport:
         results: list[ProjectionDriftResult] = []
-        for projection_name in self._registry.list_projection_types():
+        for projection_name in PUBLIC_RUNTIME_PROJECTION_TYPES:
+            if projection_name not in self._registry.list_projection_types():
+                continue
             try:
                 results.append(self.check_projection(projection_name))
             except ProjectionDriftCheckError as exc:

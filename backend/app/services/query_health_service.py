@@ -21,9 +21,23 @@ class QueryHealthService:
         catalog_service: CatalogProvider | None = None,
     ) -> None:
         self._catalog_service = catalog_service or query_catalog_service
+        self._cached_signature: tuple[tuple[str, str, str, tuple[str, ...]], ...] | None = None
+        self._cached_health: QueryHealth | None = None
 
     def get_health(self) -> QueryHealth:
         catalog = self._catalog_service.get_catalog()
+        signature = tuple(
+            (
+                entry.query_id,
+                entry.projection_type,
+                entry.route,
+                tuple(entry.filters or []),
+            )
+            for entry in catalog.entries
+        )
+        if signature == self._cached_signature and self._cached_health is not None:
+            return self._cached_health
+
         route_counts = Counter(
             entry.route
             for entry in catalog.entries
@@ -63,7 +77,7 @@ class QueryHealthService:
                     )
                 )
 
-        return QueryHealth(
+        health = QueryHealth(
             query_surface_count=len(catalog.entries),
             registered_projection_count=len(
                 {entry.projection_type for entry in catalog.entries}
@@ -74,6 +88,9 @@ class QueryHealthService:
             unhealthy_entries=unhealthy_entries,
             generated_at=datetime.now(UTC),
         )
+        self._cached_signature = signature
+        self._cached_health = health
+        return health
 
 
 query_health_service = QueryHealthService(QueryCatalogService())

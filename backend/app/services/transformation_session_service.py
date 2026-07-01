@@ -148,6 +148,7 @@ class TransformationSessionService:
         summary = (
             f"Prepared {len(request.affected_files)} file targets with governed proposal and {len(artifacts)} artifacts."
         )
+        task = self._tasks.mark_completed(task.id, summary=summary)
         record = TransformationSessionSummary(
             transformation_id=transformation_id,
             task=Task(
@@ -193,7 +194,6 @@ class TransformationSessionService:
             rollback_reference=repository_summary.rollback_reference,
         )
         self._sessions[record.transformation_id] = record
-        self._tasks.mark_completed(task.id, summary=summary)
         return record
 
     def list_sessions(self) -> list[TransformationSessionSummary]:

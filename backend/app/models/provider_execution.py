@@ -155,3 +155,7 @@ class ProviderExecutionRecord(BaseModel):
         if not value.strip():
             raise ValueError("must not be empty")
         return value
+
+    @property
+    def provider_id(self) -> str:
+        return self.request.provider_id
