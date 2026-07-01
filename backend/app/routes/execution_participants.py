@@ -22,6 +22,11 @@ def get_execution_participant_diagnostics():
     return execution_participant_registry_service.diagnostics()
 
 
+@router.get("/runtime/execution-participants/capabilities")
+def list_execution_participant_capabilities():
+    return execution_participant_registry_service.list_capability_manifests()
+
+
 @router.post("/runtime/execution-participants/route")
 def route_execution_participant(request: ExecutionCapabilityRouteRequest):
     return execution_participant_registry_service.route_capability(request)
@@ -100,4 +105,3 @@ def interrupt_execution_invocation(invocation_id: str, request: ExecutionLifecyc
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-

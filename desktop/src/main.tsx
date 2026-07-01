@@ -12,6 +12,7 @@ import {
   getActiveRuntimeWorkspace,
   getExecutionInvocations,
   getExecutionParticipantDiagnostics,
+  getExecutionParticipantCapabilities,
   getExecutionParticipants,
   getAgentAdapterDiagnostics,
   getAgentAdapters,
@@ -33,6 +34,8 @@ import {
   getRepositoryChangeSummary,
   getPatchRecords,
   getTransformationHistory,
+  getTransformationSessions,
+  createTransformationSession,
   getRepositoryMemory,
   getMemoryDiagnostics,
   getRuntimeDashboard,
@@ -89,12 +92,14 @@ import {
   type RepositoryIntelligenceDiagnostics,
   type RepositoryChangeSummary,
   type PatchRecordView,
+  type TransformationSessionSummary,
   type SkillRegistryCatalog,
   type SkillRegistryDiagnostics,
   type MemoryDiagnostics,
   type WorkingMemory,
   type TransformationHistoryProjection,
   type ExecutionParticipant,
+  type ExecutionParticipantRegistry,
   type ExecutionParticipantRegistryDiagnostics,
   type ExecutionInvocation,
 } from './api/runtime';
@@ -111,6 +116,7 @@ type ViewId =
   | 'workspace'
   | 'settings'
   | 'marketplace'
+  | 'execution-fabric'
   | 'skills'
   | 'memory'
   | 'repository-intelligence'
@@ -148,8 +154,10 @@ type ConsoleSnapshot = {
   agentEventNormalization: AgentEventNormalizationCatalog | null;
   agentInvocations: AgentInvocationRecord[];
   executionParticipants: ExecutionParticipant[];
+  executionParticipantCapabilities: ExecutionParticipant['capability_manifest'];
   executionParticipantDiagnostics: ExecutionParticipantRegistryDiagnostics | null;
   executionInvocations: ExecutionInvocation[];
+  executionRoutePreview: ExecutionParticipantRegistry | null;
   selectedInvocationId: string | null;
   selectedInvocationSummary: AgentInvocationSummary | null;
   selectedInvocationHistory: AgentInvocationHistorySummary | null;
@@ -166,6 +174,7 @@ type ConsoleSnapshot = {
   artifactRecords: ArtifactRecordView[];
   patchRecords: PatchRecordView[];
   transformationHistory: TransformationHistoryProjection | null;
+  transformationSessions: TransformationSessionSummary[];
   engineeringKnowledge: EngineeringKnowledgeCatalog | null;
   decisionIntelligence: DecisionIntelligenceSummary | null;
   evaluationAccountability: EvaluationAccountabilityProjection | null;
@@ -199,6 +208,7 @@ const views: Array<{ id: ViewId; label: string; description: string }> = [
   { id: 'workspace', label: 'Workspace Binding', description: 'Repository binding summary' },
   { id: 'settings', label: 'Settings', description: 'Configuration summary' },
   { id: 'marketplace', label: 'Agent Marketplace', description: 'Adapters and invocations' },
+  { id: 'execution-fabric', label: 'Execution Fabric', description: 'Participants, capabilities, and invocations' },
   { id: 'skills', label: 'Skills', description: 'Registered skills summary' },
   { id: 'memory', label: 'Memory', description: 'Derived repository memory' },
   { id: 'repository-intelligence', label: 'Repository Intelligence', description: 'Architecture and inventory projections' },
@@ -300,8 +310,10 @@ function useOperatorConsole() {
     agentEventNormalization: null,
     agentInvocations: [],
     executionParticipants: [],
+    executionParticipantCapabilities: [],
     executionParticipantDiagnostics: null,
     executionInvocations: [],
+    executionRoutePreview: null,
     selectedInvocationId: null,
     selectedInvocationSummary: null,
     selectedInvocationHistory: null,
@@ -318,6 +330,7 @@ function useOperatorConsole() {
     artifactRecords: [],
     patchRecords: [],
     transformationHistory: null,
+    transformationSessions: [],
     engineeringKnowledge: null,
     decisionIntelligence: null,
     evaluationAccountability: null,
@@ -359,7 +372,7 @@ function useOperatorConsole() {
     setRefreshing(true);
     setError(null);
     try {
-      const [status, dashboard, sessions, workspaces, activeWorkspace, providerObservability, providerHealth, providerDiagnostics, providerExecutions, agentAdapters, agentAdapterDiagnostics, agentEventNormalization, agentInvocations, executionParticipants, executionParticipantDiagnostics, executionInvocations, skillRegistry, skillRegistryDiagnostics, memoryDiagnostics, repositoryMemory, artifactMemory, decisionMemory, artifactRecords, patchRecords, repositoryChangeSummary, transformationHistory, repositoryIntelligence, repositoryIntelligenceDiagnostics, engineeringKnowledge, decisionIntelligence, evaluationAccountability] =
+      const [status, dashboard, sessions, workspaces, activeWorkspace, providerObservability, providerHealth, providerDiagnostics, providerExecutions, agentAdapters, agentAdapterDiagnostics, agentEventNormalization, agentInvocations, executionParticipants, executionParticipantCapabilities, executionParticipantDiagnostics, executionInvocations, skillRegistry, skillRegistryDiagnostics, memoryDiagnostics, repositoryMemory, artifactMemory, decisionMemory, artifactRecords, patchRecords, repositoryChangeSummary, transformationHistory, transformationSessions, repositoryIntelligence, repositoryIntelligenceDiagnostics, engineeringKnowledge, decisionIntelligence, evaluationAccountability] =
         await Promise.all([
           getRuntimeStatus(),
           getRuntimeDashboard(),
@@ -375,6 +388,7 @@ function useOperatorConsole() {
           getAgentEventNormalizationCatalog().catch(() => null),
           getAgentInvocationRecent().catch(() => ({ invocations: [] })),
           getExecutionParticipants().catch(() => []),
+          getExecutionParticipantCapabilities().catch(() => []),
           getExecutionParticipantDiagnostics().catch(() => null),
           getExecutionInvocations().catch(() => []),
           getSkillRegistry().catch(() => null),
@@ -387,6 +401,7 @@ function useOperatorConsole() {
           getPatchRecords().catch(() => []),
           getRepositoryChangeSummary().catch(() => null),
           getTransformationHistory().catch(() => null),
+          getTransformationSessions().catch(() => ({ items: [], total: 0 })),
           getRepositoryIntelligence().catch(() => null),
           getRepositoryIntelligenceDiagnostics().catch(() => null),
           getEngineeringKnowledge().catch(() => null),
@@ -420,8 +435,10 @@ function useOperatorConsole() {
         agentEventNormalization,
         agentInvocations: agentInvocations.invocations,
         executionParticipants,
+        executionParticipantCapabilities,
         executionParticipantDiagnostics,
         executionInvocations,
+        executionRoutePreview: null,
         selectedInvocationId: nextInvocationId,
         selectedInvocationSummary: null,
         selectedInvocationHistory: null,
@@ -436,6 +453,7 @@ function useOperatorConsole() {
         patchRecords,
         repositoryChangeSummary,
         transformationHistory,
+        transformationSessions: transformationSessions.items,
         repositoryIntelligence,
         repositoryIntelligenceDiagnostics,
         engineeringKnowledge,
@@ -470,8 +488,10 @@ function useOperatorConsole() {
         agentEventNormalization: null,
         agentInvocations: [],
         executionParticipants: [],
+        executionParticipantCapabilities: [],
         executionParticipantDiagnostics: null,
         executionInvocations: [],
+        executionRoutePreview: null,
         selectedInvocationId: null,
         selectedInvocationSummary: null,
         selectedInvocationHistory: null,
@@ -486,6 +506,7 @@ function useOperatorConsole() {
         patchRecords: [],
         repositoryChangeSummary: null,
         transformationHistory: null,
+        transformationSessions: [],
         repositoryIntelligence: null,
         repositoryIntelligenceDiagnostics: null,
         engineeringKnowledge: null,
@@ -572,9 +593,11 @@ function useOperatorConsole() {
   };
 
   const submitExecutionInvocation = async (capabilityId: string) => {
+    const route = await routeExecutionCapability(capabilityId.trim());
     const created = await createExecutionInvocation(capabilityId.trim());
     setData((current) => ({
       ...current,
+      executionRoutePreview: route,
       executionInvocations: [created, ...current.executionInvocations],
     }));
   };
@@ -648,6 +671,25 @@ function App() {
 
   const selectedInvocation =
     c.data.selectedInvocationHistory ?? c.data.selectedInvocationSummary ?? null;
+
+  const submitTransformationSession = async () => {
+    if (!c.launchForm.request.trim() || !c.launchForm.spec.trim()) {
+      return;
+    }
+    try {
+      await createTransformationSession({
+        title: c.launchForm.taskTitle.trim() || c.launchForm.request.trim(),
+        objective: c.launchForm.request.trim(),
+        specification: c.launchForm.spec.trim(),
+        context_markdown: c.launchForm.context.trim() || null,
+        requested_by: 'operator',
+        validation_command: 'git diff --check',
+      });
+      await c.refresh();
+    } catch {
+      // Keep the transformation workflow non-blocking in the console.
+    }
+  };
 
   return (
     <div className="desktop-app-shell">
@@ -980,12 +1022,17 @@ function App() {
                   </ul>
                 </StateFrame>
               </Panel>
-              <Panel title="Execution Participants">
+            </section>
+          ) : null}
+
+          {view === 'execution-fabric' ? (
+            <section className="console-grid">
+              <Panel title="Participant Explorer">
                 <StateFrame state={c.data.executionParticipants.length ? 'ready' : c.state} loading="Loading execution participants." empty="No execution participants returned." error={c.error ?? 'Execution participant registry unavailable.'}>
                   <div className="details">
                     <div><dt>Total participants</dt><dd>{c.data.executionParticipantDiagnostics?.total_participants ?? c.data.executionParticipants.length}</dd></div>
                     <div><dt>Registry status</dt><dd>{c.data.executionParticipantDiagnostics?.status ?? 'unknown'}</dd></div>
-                    <div><dt>Capability route count</dt><dd>{Object.keys(c.data.executionParticipantDiagnostics?.kinds ?? {}).length}</dd></div>
+                    <div><dt>Routing policy</dt><dd>{c.data.executionParticipantDiagnostics?.routing_policy ?? 'deterministic-human-governed'}</dd></div>
                     <div><dt>Warnings</dt><dd>{c.data.executionParticipantDiagnostics?.warnings.length ?? 0}</dd></div>
                   </div>
                   <ul className="catalog-list">
@@ -995,7 +1042,7 @@ function App() {
                         <p className="session-meta">{participant.participant_id} · {participant.version} · {participant.lifecycle}</p>
                         <p className="request-text">{participant.availability}</p>
                         <dl className="details">
-                          <div><dt>Capabilities</dt><dd>{participant.capabilities.map((capability) => capability.capability_id).join(', ') || 'none'}</dd></div>
+                          <div><dt>Capabilities</dt><dd>{participant.capability_manifest.map((capability) => capability.capability_id).join(', ') || 'none'}</dd></div>
                           <div><dt>Health</dt><dd>{participant.health}</dd></div>
                           <div><dt>Operations</dt><dd>{participant.supported_operations.join(', ') || 'none'}</dd></div>
                         </dl>
@@ -1004,34 +1051,26 @@ function App() {
                   </ul>
                 </StateFrame>
               </Panel>
-              <Panel title="Agent Invocations">
-                <StateFrame state={c.data.agentInvocations.length ? 'ready' : c.state} loading="Loading agent invocations." empty="No agent invocations returned." error={c.error ?? 'Agent invocations unavailable.'}>
-                  <ul className="session-list">
-                    {c.data.agentInvocations.map((invocation) => (
-                      <li key={invocation.invocation_id}>
-                        <button type="button" className={invocation.invocation_id === c.selectedInvocationId ? 'selected' : ''} onClick={() => void c.loadSelectedInvocation(invocation.invocation_id)}>
-                          <strong>{invocation.invocation_id}</strong>
-                          <span>{invocation.state}</span>
-                        </button>
-                        <p className="session-meta">{invocation.adapter_id} · {invocation.capability_id}{invocation.runtime_session_id ? ` · runtime ${invocation.runtime_session_id}` : ''}</p>
+              <Panel title="Capability Explorer">
+                <StateFrame state={c.data.executionParticipantCapabilities.length ? 'ready' : c.state} loading="Loading execution capabilities." empty="No execution capabilities returned." error={c.error ?? 'Execution capability manifests unavailable.'}>
+                  <dl className="details">
+                    <div><dt>Capabilities</dt><dd>{c.data.executionParticipantDiagnostics?.capabilities ? Object.keys(c.data.executionParticipantDiagnostics.capabilities).length : c.data.executionParticipantCapabilities.length}</dd></div>
+                    <div><dt>Registry views</dt><dd>{c.data.executionParticipantDiagnostics?.registry_views.join(', ') ?? 'participant, capability, invocation'}</dd></div>
+                    <div><dt>Route preview</dt><dd>{c.data.executionRoutePreview?.selected_participant_id ?? 'none'}</dd></div>
+                    <div><dt>Eligible routes</dt><dd>{c.data.executionRoutePreview?.eligible_participant_ids.length ?? 0}</dd></div>
+                  </dl>
+                  <ul className="timeline">
+                    {c.data.executionParticipantCapabilities.map((capability) => (
+                      <li key={`${capability.participant_id}:${capability.capability_id}`}>
+                        <div className="timeline-row"><strong>{capability.display_name}</strong><span>{capability.kind}</span></div>
+                        <p>{capability.participant_id} · route {capability.route_order}</p>
+                        <p className="session-meta">{capability.capability_id} · {capability.lifecycle} · {capability.health}</p>
                       </li>
                     ))}
                   </ul>
                 </StateFrame>
-                {mockAdapter ? (
-                  <form className="launch-form" onSubmit={(event: { preventDefault(): void }) => { event.preventDefault(); void c.submitInvocation(); }}>
-                    <h3>Deterministic Invocation</h3>
-                    <label><span>Adapter id</span><input value={c.invocationForm.adapterId} onChange={(event: { target: { value: string } }) => c.setInvocationForm((current) => ({ ...current, adapterId: event.target.value }))} placeholder="agent-fake" /></label>
-                    <label><span>Capability id</span><input value={c.invocationForm.capabilityId} onChange={(event: { target: { value: string } }) => c.setInvocationForm((current) => ({ ...current, capabilityId: event.target.value }))} placeholder="memory" /></label>
-                    <label><span>Metadata JSON</span><textarea value={c.invocationForm.metadata} onChange={(event: { target: { value: string } }) => c.setInvocationForm((current) => ({ ...current, metadata: event.target.value }))} rows={3} /></label>
-                    <div className="launch-actions">
-                      <button type="submit" className="secondary-button">Create invocation</button>
-                      <button type="button" className="secondary-button danger-button" disabled={!c.selectedInvocationId} onClick={() => c.selectedInvocationId && void cancelAgentInvocation(c.selectedInvocationId).then(() => void c.refresh())}>Cancel selected</button>
-                    </div>
-                  </form>
-                ) : null}
               </Panel>
-              <Panel title="Execution Invocations">
+              <Panel title="Invocation Explorer">
                 <StateFrame state={c.data.executionInvocations.length ? 'ready' : c.state} loading="Loading execution invocations." empty="No execution invocations returned." error={c.error ?? 'Execution invocation history unavailable.'}>
                   <ul className="session-list">
                     {c.data.executionInvocations.map((invocation) => (
@@ -1192,6 +1231,22 @@ function App() {
                 </StateFrame>
               </Panel>
               <Panel title="Patches">
+                <div className="launch-actions">
+                  <button type="button" className="secondary-button" onClick={() => void submitTransformationSession()}>
+                    Create transformation session
+                  </button>
+                  <span className="session-meta">Uses the current task, request, specification, and context fields.</span>
+                </div>
+                <ul className="timeline">
+                  {c.data.transformationSessions.slice(0, 5).map((session) => (
+                    <li key={session.transformation_id}>
+                      <div className="timeline-row"><strong>{session.transformation_id}</strong><span>{session.patch.status}</span></div>
+                      <p>{session.summary}</p>
+                      <p className="session-meta">{session.validation_command ?? 'no validation command'} · {session.rollback_reference ?? 'no rollback reference'}</p>
+                    </li>
+                  ))}
+                </ul>
+                <h3>Derived patch records</h3>
                 <ul className="timeline">
                   {c.data.patchRecords.slice(0, 10).map((patch) => (
                     <li key={patch.id}>

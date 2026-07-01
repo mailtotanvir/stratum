@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.sdk.loader import LoadedExtension
+from app.sdk.registry import _compare_versions, _is_runtime_compatible
 
 
 @dataclass(frozen=True)
@@ -39,12 +40,12 @@ def build_extension_diagnostics(extensions: list[LoadedExtension]) -> ExtensionD
         if not manifest.enabled:
             disabled += 1
         runtime = manifest.runtime_compatibility
-        if runtime.get("runtime") not in (None, ">=1"):
+        if not _is_runtime_compatible(runtime):
             incompatible += 1
         for dep in manifest.dependencies:
             if dep.extension_id not in by_id:
                 issues.append(f"missing dependency: {dep.extension_id}")
-            elif by_id[dep.extension_id] < dep.minimum_version:
+            elif _compare_versions(by_id[dep.extension_id], dep.minimum_version) < 0:
                 issues.append(
                     f"version mismatch: {dep.extension_id} requires {dep.minimum_version}"
                 )
@@ -55,7 +56,7 @@ def build_extension_diagnostics(extensions: list[LoadedExtension]) -> ExtensionD
                 extension_id=manifest.extension_id,
                 kind=manifest.kind,
                 status="disabled" if not manifest.enabled else ("degraded" if issues else "healthy"),
-                compatible=not runtime.get("runtime") or runtime.get("runtime") == ">=1",
+                compatible=_is_runtime_compatible(runtime),
                 dependency_issues=issues,
                 warnings=[],
                 source_path=ext.source_path,

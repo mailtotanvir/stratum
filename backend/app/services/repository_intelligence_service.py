@@ -24,7 +24,7 @@ class RepositoryIntelligenceService:
         artifacts = artifact_service.list_artifacts()
         skills = skill_registry_service.list_registry().skills
         providers = provider_configuration_service.list_configurations()
-        adapters = agent_adapter_catalog_service.list_catalog().adapters
+        adapters = agent_adapter_catalog_service.list_adapters().adapters
         events = event_service.list_persisted_events()
         return RepositoryIntelligenceSummary(
             repository_id=workspace,

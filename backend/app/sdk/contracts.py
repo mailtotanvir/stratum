@@ -13,6 +13,13 @@ class CapabilityDescriptor(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ContractSchema(BaseModel):
+    contract_id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    description: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 @runtime_checkable
 class ProviderContract(Protocol):
     provider_id: str
@@ -87,3 +94,12 @@ class WorkspaceProviderContract(Protocol):
 
 
 ExtensionFactory = Callable[[dict[str, Any]], Any]
+
+PUBLIC_CONTRACT_NAMES = (
+    "provider",
+    "tool",
+    "execution-participant",
+    "agent-adapter",
+    "skill",
+    "evaluation-pack",
+)

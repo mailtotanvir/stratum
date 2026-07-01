@@ -225,6 +225,61 @@ export type TransformationHistoryProjection = {
   };
 };
 
+export type TransformationSessionArtifact = {
+  artifact_id: string;
+  path: string;
+  kind: string;
+  label: string;
+  created_at: string;
+  metadata: Record<string, unknown>;
+};
+
+export type TransformationSessionPatchProposal = {
+  patch_id: string;
+  status: string;
+  validation_command?: string | null;
+  rollback_reference?: string | null;
+  affected_files: string[];
+  proposal_id?: string | null;
+  artifact_id?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type TransformationSessionSummary = {
+  transformation_id: string;
+  task: RuntimeTask;
+  proposal: {
+    id: string;
+    task_id?: string | null;
+    source_type: string;
+    source_id?: string | null;
+    source_context_snapshot?: Record<string, unknown> | null;
+    title: string;
+    body: string;
+    status: string;
+    created_at: string;
+    resolved_at?: string | null;
+    decision?: string | null;
+  };
+  repository_summary: RepositoryChangeSummary;
+  repository_intelligence: RepositoryIntelligenceSummary;
+  artifacts: TransformationSessionArtifact[];
+  patch: TransformationSessionPatchProposal;
+  history: TransformationHistoryProjection;
+  summary: string;
+  created_at: string;
+  updated_at: string;
+  validation_command?: string | null;
+  checkpoint_commit?: string | null;
+  rollback_reference?: string | null;
+  approvals_required: boolean;
+};
+
+export type TransformationSessionCollection = {
+  items: TransformationSessionSummary[];
+  total: number;
+};
+
 export type ProviderExecutionSummary = {
   total_executions: number;
   completed: number;
@@ -609,6 +664,7 @@ export type ExtensionManifest = {
     | 'workspace-provider';
   capabilities: string[];
   runtime_compatibility: Record<string, unknown>;
+  api_contract: Record<string, unknown>;
   dependencies: ExtensionManifestDependency[];
   permissions: string[];
   supported_protocols: string[];
@@ -620,6 +676,9 @@ export type ExtensionManifest = {
 export type LoadedExtension = {
   manifest: ExtensionManifest;
   source_path: string;
+  compatible: boolean;
+  warnings: string[];
+  dependency_issues: string[];
 };
 
 export type PlatformExtensionDiagnostic = {
@@ -639,6 +698,16 @@ export type PlatformDiagnostics = {
   version_mismatches: number;
   dependency_issues: number;
   extensions: PlatformExtensionDiagnostic[];
+};
+
+export type PlatformSdkSchema = {
+  contract: {
+    contract_id: string;
+    version: string;
+    description?: string | null;
+    metadata: Record<string, unknown>;
+  };
+  extension_manifest: Record<string, unknown>;
 };
 
 export type ProviderRoutingDecision = {
@@ -869,6 +938,26 @@ export type ExecutionParticipant = {
   kind: ExecutionParticipantKind;
   identity: Record<string, unknown>;
   capabilities: Array<{ capability_id: string; description?: string | null; operations: string[] }>;
+  capability_manifest: Array<{
+    capability_id: string;
+    participant_id: string;
+    display_name: string;
+    kind: ExecutionParticipantKind;
+    route_order: number;
+    description?: string | null;
+    operations: string[];
+    inputs: string[];
+    outputs: string[];
+    artifacts: string[];
+    approval_required: boolean;
+    risk_level: 'low' | 'medium' | 'high' | 'critical';
+    streaming_support: boolean;
+    interrupt_support: boolean;
+    lifecycle: ExecutionParticipantLifecycle;
+    health: ExecutionParticipantHealth;
+    availability: string;
+    metadata: Record<string, unknown>;
+  }>;
   lifecycle: ExecutionParticipantLifecycle;
   health: ExecutionParticipantHealth;
   availability: string;
@@ -883,6 +972,9 @@ export type ExecutionParticipantRegistryDiagnostics = {
   status: string;
   total_participants: number;
   kinds: Record<string, number>;
+  capabilities: Record<string, number>;
+  routing_policy: string;
+  registry_views: string[];
   warnings: string[];
   metadata: Record<string, unknown>;
 };
@@ -1080,6 +1172,8 @@ export const getExecutionParticipants = () =>
   fetchJson<ExecutionParticipant[]>('/runtime/execution-participants');
 export const getExecutionParticipantDiagnostics = () =>
   fetchJson<ExecutionParticipantRegistryDiagnostics>('/runtime/execution-participants/diagnostics');
+export const getExecutionParticipantCapabilities = () =>
+  fetchJson<ExecutionParticipant['capability_manifest']>('/runtime/execution-participants/capabilities');
 export const routeExecutionCapability = (capabilityId: string) =>
   postJson<ExecutionParticipantRegistry>('/runtime/execution-participants/route', {
     capability_id: capabilityId,
@@ -1124,6 +1218,17 @@ export const getRepositoryChangeSummary = () =>
   fetchJson<RepositoryChangeSummary>('/runtime/repository-change-summary');
 export const getTransformationHistory = () =>
   fetchJson<TransformationHistoryProjection>('/runtime/transformation-history');
+export const getTransformationSessions = () =>
+  fetchJson<TransformationSessionCollection>('/runtime/transformation-sessions');
+export const createTransformationSession = (payload: {
+  title: string;
+  objective: string;
+  specification: string;
+  context_markdown?: string | null;
+  requested_by?: string;
+  validation_command?: string | null;
+  affected_files?: string[];
+}) => postJson<TransformationSessionSummary>('/runtime/transformation-sessions', payload);
 export const getRepositoryIntelligence = () =>
   fetchJson<RepositoryIntelligenceSummary>('/runtime/repository-intelligence');
 export const getRepositoryIntelligenceDiagnostics = () =>
@@ -1146,3 +1251,5 @@ export const getPlatformExtensions = () =>
   fetchJson<{ extensions: LoadedExtension[] }>('/platform/extensions');
 export const getPlatformDiagnostics = () =>
   fetchJson<PlatformDiagnostics>('/platform/diagnostics');
+export const getPlatformSdkSchema = () =>
+  fetchJson<PlatformSdkSchema>('/platform/sdk/schema');

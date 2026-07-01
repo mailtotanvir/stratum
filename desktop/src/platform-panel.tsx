@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { getPlatformDiagnostics, getPlatformExtensions, type LoadedExtension, type PlatformDiagnostics } from './api/runtime';
+import {
+  getPlatformDiagnostics,
+  getPlatformExtensions,
+  getPlatformSdkSchema,
+  type LoadedExtension,
+  type PlatformDiagnostics,
+  type PlatformSdkSchema,
+} from './api/runtime';
 import { getRuntimeApiBaseUrl } from './api/config';
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error';
@@ -12,6 +19,7 @@ export function PlatformPanel() {
   const [state, setState] = useState<LoadState>('loading');
   const [extensions, setExtensions] = useState<LoadedExtension[]>([]);
   const [diagnostics, setDiagnostics] = useState<PlatformDiagnostics | null>(null);
+  const [schema, setSchema] = useState<PlatformSdkSchema | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const apiBaseUrl = getRuntimeApiBaseUrl();
@@ -20,13 +28,19 @@ export function PlatformPanel() {
     setRefreshing(true);
     setError(null);
     try {
-      const [ext, diag] = await Promise.all([getPlatformExtensions(), getPlatformDiagnostics()]);
+      const [ext, diag, sdkSchema] = await Promise.all([
+        getPlatformExtensions(),
+        getPlatformDiagnostics(),
+        getPlatformSdkSchema(),
+      ]);
       setExtensions(ext.extensions);
       setDiagnostics(diag);
+      setSchema(sdkSchema);
       setState(ext.extensions.length ? 'ready' : 'empty');
     } catch (err) {
       setExtensions([]);
       setDiagnostics(null);
+      setSchema(null);
       setState('error');
       setError(err instanceof Error ? err.message : `Backend unavailable at ${apiBaseUrl}`);
     } finally {
@@ -65,6 +79,15 @@ export function PlatformPanel() {
         <article className="summary-card"><span>Dependency issues</span><strong>{diagnostics?.dependency_issues ?? 0}</strong></article>
       </section>
 
+      <section className="panel">
+        <div className="panel-header">
+          <h2>SDK Schema</h2>
+        </div>
+        <p className="session-meta">{schema?.contract.contract_id ?? 'n/a'} · v{schema?.contract.version ?? 'n/a'}</p>
+        <p>{schema?.contract.description ?? 'Stable public SDK schema export.'}</p>
+        <p className="session-meta">{schema?.contract.metadata ? Object.keys(schema.contract.metadata).join(', ') : 'No contract metadata.'}</p>
+      </section>
+
       <section className="console-grid">
         <article className="panel">
           <div className="panel-header"><h2>Installed Extensions</h2></div>
@@ -77,6 +100,8 @@ export function PlatformPanel() {
                 </div>
                 <p className="session-meta">{ext.manifest.extension_id} · v{ext.manifest.version} · {ext.manifest.author}</p>
                 <p>{ext.manifest.supported_protocols.join(', ')}</p>
+                {ext.warnings.length ? <p>{ext.warnings.join('; ')}</p> : null}
+                {ext.dependency_issues.length ? <p>{ext.dependency_issues.join('; ')}</p> : null}
                 <p className="session-meta">{ext.source_path}</p>
               </li>
             ))}

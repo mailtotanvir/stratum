@@ -31,6 +31,7 @@ class ExtensionManifest(BaseModel):
     ]
     capabilities: list[str] = Field(default_factory=list)
     runtime_compatibility: dict[str, Any] = Field(default_factory=dict)
+    api_contract: dict[str, Any] = Field(default_factory=dict)
     dependencies: list[ExtensionManifestDependency] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     supported_protocols: list[str] = Field(default_factory=list)
@@ -58,6 +59,9 @@ class ExtensionManifest(BaseModel):
         self.permissions = _unique_list(self.permissions)
         self.supported_protocols = _unique_list(self.supported_protocols)
         return self
+
+    def target_contract(self) -> str:
+        return str(self.api_contract.get("target_contract", "stratum.v1"))
 
 
 def _unique_list(values: list[str]) -> list[str]:

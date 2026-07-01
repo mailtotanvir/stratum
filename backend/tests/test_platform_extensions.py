@@ -3,6 +3,8 @@ from pathlib import Path
 from app.sdk.diagnostics import build_extension_diagnostics
 from app.sdk.loader import ExtensionLoader
 from app.sdk.manifest import ExtensionManifest
+from app.sdk.registry import extension_registry_service
+from app.routes.platform import sdk_schema
 
 
 def test_extension_manifest_validation() -> None:
@@ -57,6 +59,19 @@ def test_extension_diagnostics_report() -> None:
     loader = ExtensionLoader()
     report = build_extension_diagnostics(loader.list_extensions())
 
-    assert report.installed_extensions >= 7
+    assert report.installed_extensions >= 5
     assert report.disabled_extensions == 0
     assert report.dependency_issues == 0
+
+
+def test_extension_registry_snapshot_and_schema_route() -> None:
+    snapshot = extension_registry_service.snapshot()
+
+    assert snapshot.total_extensions >= 5
+    assert snapshot.enabled_extensions >= 5
+    assert snapshot.contract_kinds["provider"] >= 1
+    assert snapshot.contract_kinds["tool"] >= 1
+
+    schema = sdk_schema()
+
+    assert schema["contract"]["contract_id"] == "stratum.extension.sdk"

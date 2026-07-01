@@ -12,6 +12,7 @@ from app.routes.agent_adapter_catalog import (
 )
 from app.routes.artifact import router as artifact_router
 from app.routes.transformation_history import router as transformation_history_router
+from app.routes.transformation_session import router as transformation_session_router
 from app.routes.artifact_lineage import router as artifact_lineage_router
 from app.routes.diagnostics import router as diagnostics_router
 from app.routes.decision_lineage import router as decision_lineage_router
@@ -124,6 +125,7 @@ app.include_router(agent_invocation_router)
 app.include_router(agent_adapter_catalog_router)
 app.include_router(artifact_router)
 app.include_router(transformation_history_router)
+app.include_router(transformation_session_router)
 app.include_router(artifact_lineage_router)
 app.include_router(diagnostics_router)
 app.include_router(decision_effectiveness_projections_router)
