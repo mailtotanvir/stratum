@@ -1,0 +1,17 @@
+{
+  "extension_id": "provider-sample",
+  "name": "Sample Provider",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "description": "Deterministic provider extension sample.",
+  "kind": "provider",
+  "capabilities": ["chat", "tool-use"],
+  "runtime_compatibility": {"runtime": ">=1"},
+  "api_contract": {"target_contract": "provider"},
+  "dependencies": [],
+  "permissions": ["read:config"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "provider_sample:ProviderSample",
+  "enabled": true,
+  "metadata": {"sample": true}
+}

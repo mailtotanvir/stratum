@@ -1,0 +1,17 @@
+{
+  "extension_id": "evaluation-pack-sample",
+  "name": "Sample Evaluation Pack",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "description": "Deterministic evaluation pack sample.",
+  "kind": "evaluation-pack",
+  "capabilities": ["regression"],
+  "runtime_compatibility": {"runtime": ">=1"},
+  "api_contract": {"target_contract": "evaluation-pack"},
+  "dependencies": [],
+  "permissions": ["read:events"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "evaluation_pack_sample:EvaluationPackSample",
+  "enabled": true,
+  "metadata": {"sample": true}
+}

@@ -1,0 +1,17 @@
+{
+  "extension_id": "tool-sample",
+  "name": "Sample Tool",
+  "version": "1.0.0",
+  "author": "Stratum",
+  "description": "Deterministic tool extension sample.",
+  "kind": "tool",
+  "capabilities": ["inspection"],
+  "runtime_compatibility": {"runtime": ">=1"},
+  "api_contract": {"target_contract": "tool"},
+  "dependencies": [],
+  "permissions": ["read:workspace"],
+  "supported_protocols": ["stratum-sdk"],
+  "entrypoint": "tool_sample:ToolSample",
+  "enabled": true,
+  "metadata": {"sample": true}
+}
