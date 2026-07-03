@@ -372,43 +372,75 @@ function useOperatorConsole() {
     setRefreshing(true);
     setError(null);
     try {
-      const [status, dashboard, sessions, workspaces, activeWorkspace, providerObservability, providerHealth, providerDiagnostics, providerExecutions, agentAdapters, agentAdapterDiagnostics, agentEventNormalization, agentInvocations, executionParticipants, executionParticipantCapabilities, executionParticipantDiagnostics, executionInvocations, skillRegistry, skillRegistryDiagnostics, memoryDiagnostics, repositoryMemory, artifactMemory, decisionMemory, artifactRecords, patchRecords, repositoryChangeSummary, transformationHistory, transformationSessions, repositoryIntelligence, repositoryIntelligenceDiagnostics, engineeringKnowledge, decisionIntelligence, evaluationAccountability] =
-        await Promise.all([
-          getRuntimeStatus(),
-          getRuntimeDashboard(),
-          listRuntimeSessions().catch(() => []),
-          listRuntimeWorkspaces().catch(() => []),
-          getActiveRuntimeWorkspace().catch(() => null),
-          getProviderObservability().catch(() => null),
-          getProviderHealth().catch(() => null),
-          getProviderLiveDiagnostics().catch(() => null),
-          getProviderExecutionRecent().catch(() => []),
-          getAgentAdapters().catch(() => ({ adapters: [] })),
-          getAgentAdapterDiagnostics().catch(() => null),
-          getAgentEventNormalizationCatalog().catch(() => null),
-          getAgentInvocationRecent().catch(() => ({ invocations: [] })),
-          getExecutionParticipants().catch(() => []),
-          getExecutionParticipantCapabilities().catch(() => []),
-          getExecutionParticipantDiagnostics().catch(() => null),
-          getExecutionInvocations().catch(() => []),
-          getSkillRegistry().catch(() => null),
-          getSkillRegistryDiagnostics().catch(() => null),
-          getMemoryDiagnostics().catch(() => null),
-          getRepositoryMemory().catch(() => null),
-          getArtifactMemory().catch(() => []),
-          getDecisionMemory().catch(() => []),
-          getArtifactRecords().catch(() => []),
-          getPatchRecords().catch(() => []),
-          getRepositoryChangeSummary().catch(() => null),
-          getTransformationHistory().catch(() => null),
-          getTransformationSessions().catch(() => ({ items: [], total: 0 })),
-          getRepositoryIntelligence().catch(() => null),
-          getRepositoryIntelligenceDiagnostics().catch(() => null),
-          getEngineeringKnowledge().catch(() => null),
-          getDecisionIntelligence().catch(() => null),
-          getEvaluationAccountabilityProjection().catch(() => null),
-        ]);
-      const sessionOverview = dashboard.latest_sessions;
+      const status = await getRuntimeStatus();
+      const [
+        dashboard,
+        sessions,
+        workspaces,
+        activeWorkspace,
+        providerObservability,
+        providerHealth,
+        providerDiagnostics,
+        providerExecutions,
+        agentAdapters,
+        agentAdapterDiagnostics,
+        agentEventNormalization,
+        agentInvocations,
+        executionParticipants,
+        executionParticipantCapabilities,
+        executionParticipantDiagnostics,
+        executionInvocations,
+        skillRegistry,
+        skillRegistryDiagnostics,
+        memoryDiagnostics,
+        repositoryMemory,
+        artifactMemory,
+        decisionMemory,
+        artifactRecords,
+        patchRecords,
+        repositoryChangeSummary,
+        transformationHistory,
+        transformationSessions,
+        repositoryIntelligence,
+        repositoryIntelligenceDiagnostics,
+        engineeringKnowledge,
+        decisionIntelligence,
+        evaluationAccountability,
+      ] = await Promise.all([
+        getRuntimeDashboard().catch(() => null),
+        listRuntimeSessions().catch(() => []),
+        listRuntimeWorkspaces().catch(() => []),
+        getActiveRuntimeWorkspace().catch(() => null),
+        getProviderObservability().catch(() => null),
+        getProviderHealth().catch(() => null),
+        getProviderLiveDiagnostics().catch(() => null),
+        getProviderExecutionRecent().catch(() => []),
+        getAgentAdapters().catch(() => ({ adapters: [] })),
+        getAgentAdapterDiagnostics().catch(() => null),
+        getAgentEventNormalizationCatalog().catch(() => null),
+        getAgentInvocationRecent().catch(() => ({ invocations: [] })),
+        getExecutionParticipants().catch(() => []),
+        getExecutionParticipantCapabilities().catch(() => []),
+        getExecutionParticipantDiagnostics().catch(() => null),
+        getExecutionInvocations().catch(() => []),
+        getSkillRegistry().catch(() => null),
+        getSkillRegistryDiagnostics().catch(() => null),
+        getMemoryDiagnostics().catch(() => null),
+        getRepositoryMemory().catch(() => null),
+        getArtifactMemory().catch(() => []),
+        getDecisionMemory().catch(() => []),
+        getArtifactRecords().catch(() => []),
+        getPatchRecords().catch(() => []),
+        getRepositoryChangeSummary().catch(() => null),
+        getTransformationHistory().catch(() => null),
+        getTransformationSessions().catch(() => ({ items: [], total: 0 })),
+        getRepositoryIntelligence().catch(() => null),
+        getRepositoryIntelligenceDiagnostics().catch(() => null),
+        getEngineeringKnowledge().catch(() => null),
+        getDecisionIntelligence().catch(() => null),
+        getEvaluationAccountabilityProjection().catch(() => null),
+      ]);
+      const sessionOverview = dashboard?.latest_sessions ?? [];
       const nextSessionId = selectedSessionId ?? sessionOverview[0]?.session_id ?? sessions[0]?.id ?? null;
       const nextInvocationId = selectedInvocationId ?? agentInvocations.invocations[0]?.invocation_id ?? null;
       const nextWorkingMemory = nextSessionId ? await getWorkingMemory(nextSessionId).catch(() => null) : null;
@@ -460,9 +492,25 @@ function useOperatorConsole() {
         decisionIntelligence,
         evaluationAccountability,
       });
-      setState(status || dashboard.latest_sessions.length || providerObservability || providerHealth ? 'ready' : 'empty');
-      if (nextSessionId) await loadSelectedSession(nextSessionId);
-      if (nextInvocationId) await loadSelectedInvocation(nextInvocationId);
+
+      const hasRuntimeData = Boolean(status || sessionOverview.length || providerObservability || providerHealth);
+      setState(hasRuntimeData ? 'ready' : 'empty');
+
+      if (nextSessionId) {
+        try {
+          await loadSelectedSession(nextSessionId);
+        } catch {
+          // Keep the console online when session detail loading fails.
+        }
+      }
+
+      if (nextInvocationId) {
+        try {
+          await loadSelectedInvocation(nextInvocationId);
+        } catch {
+          // Keep the console online when invocation detail loading fails.
+        }
+      }
     } catch (err) {
       setState('error');
       setData((current) => ({
