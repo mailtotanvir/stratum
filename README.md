@@ -96,35 +96,55 @@ backend and desktop code already in the repository.
 
 The current supported local workflow is WSL-first.
 
-### 1. Backend
-
-From `backend/`:
-
-```bash
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-### 2. Desktop
+### 1. Desktop
 
 From `desktop/`:
 
 ```bash
 pnpm install
-pnpm dev
+pnpm tauri:dev
 ```
 
-If you need a different API host for local testing, set:
+The Tauri shell launches the FastAPI backend automatically, waits for `/health`, and then opens the desktop UI.
+
+If the host is missing `pkg-config`, install it before starting Tauri:
 
 ```bash
-VITE_RUNTIME_API_BASE_URL=http://127.0.0.1:8000 pnpm dev
+sudo apt install pkg-config
 ```
 
-### 3. Tauri shell
-
-If the local checkout includes Tauri configuration:
+If the build then reports a missing `atk` or `gtk+-3.0` pkg-config module, install the matching GTK 3 development package:
 
 ```bash
-pnpm tauri dev
+sudo apt install libatk1.0-dev
+sudo apt install libgtk-3-dev
+```
+
+If the build then reports a missing `gdk-3.0` pkg-config module, install the matching GTK 3 development package:
+
+```bash
+sudo apt install libgtk-3-dev
+```
+
+If the build then reports missing `pango` or `gdk-pixbuf-2.0` pkg-config modules, install the matching development packages:
+
+```bash
+sudo apt install libpango1.0-dev
+sudo apt install libgdk-pixbuf-2.0-dev
+```
+
+If the build reports a missing `cairo` pkg-config module, install the Cairo development package:
+
+```bash
+sudo apt install libcairo2-dev
+```
+
+If the build reports missing `libsoup-3.0`, `javascriptcoregtk-4.1`, or `webkit2gtk-4.1` pkg-config modules, install the WebKitGTK stack:
+
+```bash
+sudo apt install libsoup-3.0-dev
+sudo apt install libjavascriptcoregtk-4.1-dev
+sudo apt install libwebkit2gtk-4.1-dev
 ```
 
 ## Backend Commands

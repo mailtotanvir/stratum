@@ -8,14 +8,6 @@ Work from the source tree in `~/stratum/desktop` inside WSL. Do not copy the rep
 
 The backend runs in WSL at `http://127.0.0.1:8000`, and the Tauri/React desktop talks to it over HTTP and SSE.
 
-## Start backend
-
-From `backend/`:
-
-```bash
-uv run uvicorn app.main:app --reload
-```
-
 ## Start desktop frontend
 
 From `desktop/`:
@@ -33,10 +25,36 @@ VITE_RUNTIME_API_BASE_URL=http://127.0.0.1:8000 pnpm dev
 
 ## Start Tauri
 
-If Tauri is configured in your local checkout:
+Tauri now owns the backend lifecycle in dev:
 
 ```bash
-pnpm tauri dev
+pnpm tauri:dev
+```
+
+This launches the FastAPI backend automatically, waits for `GET /health` to succeed, then opens the desktop UI.
+
+Linux Tauri dev depends on native host packages. If `pkg-config` is missing, install it first before retrying:
+
+```bash
+sudo apt install pkg-config
+```
+
+If Tauri reports a missing `atk` pkg-config module, install the GTK development package that provides it:
+
+```bash
+sudo apt install libatk1.0-dev
+```
+
+If Tauri reports a missing `gdk-3.0` pkg-config module, install the GTK 3 development package:
+
+```bash
+sudo apt install libgtk-3-dev
+```
+
+If Tauri reports a missing `cairo` pkg-config module, install the Cairo development package:
+
+```bash
+sudo apt install libcairo2-dev
 ```
 
 ## Smoke flow

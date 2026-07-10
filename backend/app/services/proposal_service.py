@@ -41,6 +41,7 @@ class ProposalService:
         if self._session_factory is None:
             self._engine = create_sqlite_engine(self._db_path)
             Base.metadata.create_all(self._engine)
+            self._ensure_source_type_column(self._engine)
             self._ensure_source_context_snapshot_column(self._engine)
             self._session_factory = create_session_factory(self._engine)
         return self._session_factory
@@ -296,6 +297,20 @@ class ProposalService:
                     text(
                         "ALTER TABLE proposals "
                         "ADD COLUMN source_context_snapshot_json TEXT"
+                    )
+                )
+
+    def _ensure_source_type_column(self, engine: Engine) -> None:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("proposals")
+        }
+        if "source_type" not in columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE proposals "
+                        "ADD COLUMN source_type TEXT NOT NULL DEFAULT 'manual'"
                     )
                 )
 

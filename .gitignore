@@ -2,6 +2,7 @@
 logs/*
 artifacts/*
 workspace/*
+.stratum/
 
 # Keep skeleton directories
 !logs/.gitkeep
@@ -13,8 +14,25 @@ workspace/*
 Thumbs.db
 .vscode/
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+Zone.Identifier
+*Zone.Identifier
 
 # Python
 .venv/
 __pycache__/
 .pytest_cache/
+.aider*
+.tmp/
+
+# JavaScript / Node / Tauri / Rust
+node_modules/
+dist/
+.tsbuildinfo
+target/
+
