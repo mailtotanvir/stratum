@@ -1,0 +1,22 @@
+# Local Redpanda for the Stratum runtime event stream.
+#
+#   docker compose -f docker-compose.redpanda.yml up -d
+#   export STRATUM_KAFKA_BROKERS=127.0.0.1:9092
+#
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda start
+      - --mode dev-container
+      - --smp 1
+      - --memory 1G
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://127.0.0.1:9092
+    ports:
+      - "9092:9092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+volumes:
+  redpanda-data:

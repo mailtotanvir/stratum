@@ -36,3 +36,12 @@ dist/
 .tsbuildinfo
 target/
 
+
+# Local databases & UAT scratch (never publish)
+.stratum-uat/
+*.db
+*.sqlite3
+
+# Local-only UAT harness (not published)
+uat.sh
+UAT_RUNBOOK.md

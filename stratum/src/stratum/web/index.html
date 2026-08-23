@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stratum — Execution Runtime</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>▲ Stratum</h1>
+  <span class="sub">local-first execution runtime</span>
+  <span id="broker-badge" class="badge" title="broker status">broker: ?</span>
+</header>
+
+<main>
+  <section id="new-task-panel" class="panel">
+    <h2>New Task</h2>
+    <label>Repository path (on server)
+      <input id="repo-path" type="text" placeholder="/home/tanvir/stratum/stratum/example-repo">
+    </label>
+    <label>Task
+      <textarea id="task-text" rows="3"
+        placeholder='Change the greeting returned by hello.py from "Hello" to "Hello Stratum" and update the test accordingly.'></textarea>
+    </label>
+    <label>Context files (comma-separated, repo-relative, optional)
+      <input id="context-files" type="text" placeholder="hello.py, test_hello.py">
+    </label>
+    <label>Markdown context (optional)
+      <textarea id="markdown-context" rows="2" placeholder="Extra instructions for the planner…"></textarea>
+    </label>
+    <button id="submit-task">Plan task →</button>
+    <div id="submit-error" class="error"></div>
+  </section>
+
+  <section id="run-panel" class="panel hidden">
+    <h2>Execution</h2>
+    <div class="meta-row">
+      <span class="kvid"><span class="k">execution</span><span id="exec-id" class="v mono"></span></span>
+      <span class="kvid"><span class="k">status</span><span id="exec-status" class="v status"></span></span>
+    </div>
+
+    <div id="plan-card" class="card hidden">
+      <h3>Plan awaiting your approval</h3>
+      <p id="plan-rationale" class="muted"></p>
+      <ol id="plan-steps"></ol>
+      <div class="approve-row">
+        <button id="approve-btn" class="primary">Approve &amp; execute</button>
+        <button id="reject-btn" class="danger">Reject</button>
+      </div>
+      <p class="muted small">No side effect happens without approval. The executor is structurally unreachable until you decide.</p>
+    </div>
+
+    <div id="timeline-card" class="card">
+      <h3>Live event timeline</h3>
+      <ul id="timeline" class="timeline mono"></ul>
+    </div>
+
+    <div id="result-banner" class="hidden"></div>
+  </section>
+
+  <section id="history-panel" class="panel">
+    <h2>History <button id="refresh-history" class="ghost" title="reload">⟳</button></h2>
+    <table id="history-table">
+      <thead><tr><th>execution</th><th>status</th><th>task</th><th>events</th><th>started</th><th></th></tr></thead>
+      <tbody id="history-rows"></tbody>
+    </table>
+    <p class="muted small">Replays are pure event folds: no AI calls, no side effects.</p>
+  </section>
+</main>
+
+<footer>
+  <span id="provider-info"></span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
